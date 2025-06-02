@@ -3,11 +3,13 @@ import torch
 from torch import Tensor, nn
 
 class DiTBlock(nn.Module):
-    def __init__(self, edge_mask):
+    def __init__(self, edge_mask, in_features, dim_hidden):
         super().__init__()
+        self.edge_mask = edge_mask
+        self.proj = nn.Linear(in_features, dim_hidden)
 
     def forward(self, tokens, t):
-        pass
+        return self.proj(tokens)
 
 class Transformer(nn.Module):
     def __init__(self, edge_mask):
@@ -16,58 +18,105 @@ class Transformer(nn.Module):
     def forward(self, tokens, t):
         pass
 
-class Simformer(VectorFieldNet):
-    def __init__(self, edge_mask):
+class Simformer(nn.Module):
+    def __init__(
+            self,
+            in_features,
+            num_nodes,
+            edge_mask,
+            dim_val=64,
+            dim_id=32,
+            dim_cond=16,
+            dim_t=16,
+            dim_hidden=128,
+            num_blocks=4,
+            num_heads=8
+        ):
         super().__init__()
+        self.in_features = in_features
+        self.num_nodes = num_nodes
+        self.edge_mask = edge_mask
+        self.dim_val = dim_val
+        self.dim_id = dim_id
+        self.dim_cond = dim_cond
+        self.dim_t = dim_t
+        self.dim_hidden = dim_hidden
+        self.num_blocks = num_blocks
+        self.num_heads = num_heads
+
+        # Tokenize on val
+        #? Should this be a repeat rather than Linear?
+        self.val_linear = nn.Linear(in_features, dim_val)
+
+        # Tokenize on id
+        self.id_embedding = nn.Embedding(num_nodes, dim_id)
+
+        # Conditioning parameter
+        self.conditioning_parameter = nn.Parameter(torch.randn(1, 1, dim_cond) * 0.5)
+
+        # Time embedding
+        self.time_embedding = RandomFourierTimeEmbedding(dim_t)
+
+        # Project input tokens to hidden dim
+        self.in_proj = nn.Linear(dim_val + dim_id + dim_cond, dim_hidden)
+
+        # Transformer blocks
+        self.blocks = nn.ModuleList([
+            DiTBlock(edge_mask, dim_hidden, dim_hidden) for _ in range(num_blocks)
+        ])
+
+
+        # Output projection
+        self.out_linear = nn.Linear(dim_hidden, in_features)
+
 
     def forward(self, theta, x, t, condition_mask):
 
-        # Input: theta -> [B, m, F], x -> [B, n, F], t -> [B,],
-        # condition_mask: representing L, C (Latent and Conditional) variables -> [B, T],
-        # edge_mask: representing DAG of nodes -> [B, T, T]
+        # Checks for shapes and device
+        B_theta, m, F_theta = theta.shape
+        B_x, n, F_x = x.shape
+        assert B_theta == B_x, f"theta and x must have the same batch size: {B_theta=} != {B_x=}"
+        assert F_theta == F_x == self.in_features, f"theta and x must have the same feature dimension as the one declared in init{self.in_features}: {F_theta=}, {F_x=}"
 
-        # Tokenize on val -> val(theta), val(x)
-        # theta: Tensor, shape [B, m, F]
-        # x: Tensor, shape [B, n, F]
-        # val: Linear layer(m+n, dim_val)
-        # val_h = linear([theta, x])
+        B = B_theta
+        T = m + n
+        F = self.in_features
 
-        # Tokenize on id -> id(theta), id(x)
-        # theta: Tensor, shape [B, m, F]
-        # x: Tensor, shape [B, n, F]
-        # id: Embedding layer(m+n, dim_id)
-        # id_h = embedding([theta, x])
+        assert condition_mask.shape == (B, T), "condition_mask must have the same batch size and sequence length as theta"
 
-        # condition_mask: Tensor, shape [B, T]
-        # Produce a signal for conditioning
-        # conditioning = nn.Parameter(torch.randn(1, 1, dim_cond) * 0.5)
-        # Mask conditioning based on the condition_mask
-        # conditioning_h = conditioning * condition_mask, shape [B, T, dim_cond]
+        theta_device = theta.device
+        x_device = x.device
+        assert theta_device == x_device, "theta and x must be on the same device"
 
-        # t: Tensor, shape [B,]
-        # time -> Fourier embedding
-        # t_h = embedding(t) [B, dim_t]
+        device = theta_device
 
-        # Concatenate all tokens *on the feature dimension*
-        # tokens = [val_h, id_h, conditioning_h], shape [B, T, dim_tokens=dim_val+dim_id+dim_cond]
+        # Tokenize on val
+        #? Should this rather be cat > linear?
+        h = torch.cat([theta, x], dim=1)  # [B, T, F]
+        val_h = self.val_linear(h)  # [B, T, dim_val]
 
-        # Transformer: Sequence of DiT Blocks with self attention, masked on dependencies mask
-        # Block(tokens, t_h, edge_mask) -> h2
-            # h1 = norm(tokens) -> [B, T, dim_tokens]
-            # h1 = att_block(tokens, edge_mask) -> [B, T, dim_hidden]
-                # att_block: multi-head attention(x, x, x, edge_mask)
-            # h1 = residual(h1, tokens)
+        # Tokenize on id
+        ids = torch.arange(T, device=device).unsqueeze(0).expand(B, -1)  # [B, T]
+        id_h = self.id_embedding(ids)  # [B, T, dim_id]
 
-            # h2 = norm(h1) -> [B, T, dim_hidden]
-            # h2 = dense_block(h2, t_h) -> [B, T, dim_hidden]
-                # Time Linear layer(dim_t, dim_hidden)
-                # dense_block: MLP(h2) + Linear(t_h) -> [B, T, dim_hidden]
-            # h2 = residual(h2, h1) -> [B, T, dim_hidden]
+        # Conditioning
+        # conditioning_parameter: [1, 1, dim_cond]
+        # condition_mask: [B, T]
+        conditioning_h = self.conditioning_parameter.expand(B, T, self.dim_cond) * condition_mask.unsqueeze(-1)  # [B, T, dim_cond]
 
-            # (Nx times)..., where tokens = h2
+        # Time embedding
+        #? Normalize time
+        t_h = self.time_embedding(t)  # [B, dim_t]
 
-        # Produce the vector field, $\nabla_{x_t} log p(x_t | theta, t)$
-        # So, output should be of same shape as input, i.e., [B, T, F]
-        # Linear layer(dim_tokens, F)
-        # return linear(h2)
-        pass
+        # Concatenate tokens
+        tokens = torch.cat([val_h, id_h, conditioning_h], dim=-1)  # [B, T, dim_val+dim_id+dim_cond]
+        h = self.in_proj(tokens)  # [B, T, dim_hidden]
+
+        # Pass through transformer blocks
+        for block in self.blocks:
+            h = block(h, t_h)
+
+        # Output projection
+        #? Should this be flattened as [B, T*F]?
+        out = self.out_linear(h)  # [B, T, F]
+        return out
