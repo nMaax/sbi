@@ -159,3 +159,8 @@ reportUnsupportedDunderAll = false
 reportGeneralTypeIssues = false
 reportInvalidTypeForm = false
 typeCheckingMode = "basic"
+
+# Extra rules for quick modifications
+python.analysis.extraPaths = ["."]
+#reportMissingImports = "none"
+#reportMissingModuleSource = "none"
