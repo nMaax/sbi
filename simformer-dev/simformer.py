@@ -2,6 +2,9 @@ from typing import Callable, Optional
 import torch
 from torch import Tensor, nn
 
+from sbi.neural_nets.net_builders.vector_field_nets import RandomFourierTimeEmbedding
+from sbi.neural_nets.net_builders.vector_field_nets import DiTBlock
+
 class DiTBlock(nn.Module):
     def __init__(self, edge_mask, in_features, dim_hidden):
         super().__init__()
@@ -187,5 +190,82 @@ def _test_dit_block():
         print(f"Assertion Error during DiTBlock test: {e}")
     except Exception as e:
         print(f"An unexpected error occurred during DiTBlock test: {e}")
+
+def _test_simformer():
+    print("\n--- Testing Simformer ---")
+
+    # Define dummy parameters for Simformer initialization
+    in_features = 5      # Dimension of input features for theta and x
+    num_nodes = 20       # Total possible nodes (m + n should be less than or equal to this)
+    edge_mask = None     # Not used in dummy DiTBlock, but needed for init
+
+    # Create Simformer instance
+    simformer = Simformer(
+        in_features=in_features,
+        num_nodes=num_nodes,
+        edge_mask=edge_mask,
+        num_blocks=2, # Use fewer blocks for faster dummy test
+        dim_hidden=64 # Smaller hidden dim for dummy test
+
+    )
+    print(f"Simformer initialized: {simformer}")
+
+    # Define dummy input tensor shapes and values
+    batch_size = 4
+    m_theta = 10         # Number of nodes/elements in theta
+    n_x = 5              # Number of nodes/elements in x
+    total_T = m_theta + n_x # Total sequence length
+
+    # theta: [B, m, F_theta]
+    theta = torch.randn(batch_size, m_theta, in_features)
+    # x: [B, n, F_x]
+    x = torch.randn(batch_size, n_x, in_features)
+    # t: [B] (time value for each batch item)
+    t = torch.rand(batch_size) * 1000 # Random time between 0 and 1000
+    # condition_mask: [B, T] (boolean mask)
+    # Example: First 'm_theta' elements are always conditioned, rest are random
+    condition_mask = torch.cat([
+        torch.ones(batch_size, m_theta, dtype=torch.bool),
+        torch.randint(0, 2, (batch_size, n_x), dtype=torch.bool)
+    ], dim=1)
+
+    print(f"Input shapes: theta={theta.shape}, x={x.shape}, t={t.shape}, condition_mask={condition_mask.shape}")
+
+    # Move to GPU if available
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        simformer.to(device)
+        theta = theta.to(device)
+        x = x.to(device)
+        t = t.to(device)
+        condition_mask = condition_mask.to(device)
+        print(f"Moved tensors and model to {device}")
+    else:
+        device = torch.device("cpu")
+        print(f"Running on CPU (CUDA not available)")
+
+
+    # Perform forward pass
+    try:
+        output = simformer(theta, x, t, condition_mask)
+        print(f"Simformer forward pass successful. Output shape: {output.shape}")
+
+        # Assert the output shape
+        # Expected output shape: [B, T, F]
+        expected_output_shape = (batch_size, total_T, in_features)
+        assert output.shape == expected_output_shape, \
+            f"Expected output shape {expected_output_shape}, but got {output.shape}"
+
+        print("Simformer output shape assertion passed!")
+
+    except AssertionError as e:
+        print(f"Assertion Error during Simformer test: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred during Simformer test: {e}")
+
+
+# Run the test when this file is executed directly
+if __name__ == "__main__":
     _test_time_embedding()
     _test_dit_block()
+    _test_simformer()
