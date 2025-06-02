@@ -104,6 +104,7 @@ version = {attr = "sbi.__version__"}
 # ruff configs
 [tool.ruff]
 extend-include = ["*.ipynb"]
+extend-exclude = ["simformer-dev/"]
 line-length = 88
 
 [tool.ruff.lint]
