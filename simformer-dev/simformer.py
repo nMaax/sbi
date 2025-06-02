@@ -120,3 +120,72 @@ class Simformer(nn.Module):
         #? Should this be flattened as [B, T*F]?
         out = self.out_linear(h)  # [B, T, F]
         return out
+
+# Check that RandomFourierTimeEmbedding is imported and functioning
+def _test_time_embedding():
+    print("\n--- Testing RandomFourierTimeEmbedding ---")
+    # Create a dummy time tensor
+    times = torch.linspace(0, 1, steps=4)
+    # Instantiate the embedding
+    emb = RandomFourierTimeEmbedding(embed_dim=8)
+    # Forward pass
+    out = emb(times)
+    assert out.shape == (4, 8), f"Expected output shape (4, 8), got {out.shape}"
+    print("RandomFourierTimeEmbedding test passed!")
+
+def _test_dit_block():
+    print("\n--- Testing DiTBlock ---")
+    # Define dummy parameters for DiTBlock initialization
+    in_features_block = 128 # Corresponds to dim_hidden from Simformer's perspective
+    dim_hidden_block = 128  # Output dimension of the block (same as input for stacked blocks)
+    edge_mask = None # Not used in this dummy DiTBlock
+
+    # Create DiTBlock instance
+    dit_block = DiTBlock(
+        edge_mask=edge_mask,
+        in_features=in_features_block,
+        dim_hidden=dim_hidden_block
+    )
+    print(f"DiTBlock initialized: {dit_block}")
+
+    # Define dummy input tensor shapes and values
+    batch_size = 4
+    sequence_length = 15 # T from Simformer (m_theta + n_x)
+    dim_t = 16 # Dimension of the time embedding
+
+    # tokens: [B, T, in_features_block]
+    tokens = torch.randn(batch_size, sequence_length, in_features_block)
+    # t_h: [B, dim_t] (time embedding)
+    t_h = torch.randn(batch_size, dim_t)
+
+    print(f"Input shapes: tokens={tokens.shape}, t_h={t_h.shape}")
+
+    # Move to GPU if available
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        dit_block.to(device)
+        tokens = tokens.to(device)
+        t_h = t_h.to(device)
+        print(f"Moved tensors and DiTBlock to {device}")
+    else:
+        device = torch.device("cpu")
+        print(f"Running on CPU (CUDA not available)")
+
+    # Perform forward pass
+    try:
+        output = dit_block(tokens, t_h)
+        print(f"DiTBlock forward pass successful. Output shape: {output.shape}")
+
+        # Assert the output shape
+        # Expected output shape: [B, T, dim_hidden_block]
+        expected_output_shape = (batch_size, sequence_length, dim_hidden_block)
+        assert output.shape == expected_output_shape, \
+            f"Expected output shape {expected_output_shape}, but got {output.shape}"
+        print("DiTBlock output shape assertion passed!")
+
+    except AssertionError as e:
+        print(f"Assertion Error during DiTBlock test: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred during DiTBlock test: {e}")
+    _test_time_embedding()
+    _test_dit_block()
