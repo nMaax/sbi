@@ -36,16 +36,26 @@ class Simformer(nn.Module):
             num_heads=8
         ):
         super().__init__()
-        self.in_features = in_features
-        self.num_nodes = num_nodes
-        self.edge_mask = edge_mask
-        self.dim_val = dim_val
-        self.dim_id = dim_id
-        self.dim_cond = dim_cond
-        self.dim_t = dim_t
-        self.dim_hidden = dim_hidden
-        self.num_blocks = num_blocks
-        self.num_heads = num_heads
+        self.in_features = in_features # Number of features by each node (F)
+        self.num_nodes = num_nodes # Number of nodes in the DAG (T = m + n)
+        self.edge_mask = edge_mask # Mask for dependency edges among nodes
+        self.dim_val = dim_val # Dimension of the value token
+        self.dim_id = dim_id # Dimension of the id token
+        self.dim_cond = dim_cond # Dimension of the conditioning token
+        self.dim_t = dim_t # Dimension of the time embedding
+        self.dim_hidden = dim_hidden # Dimension of the latent space in the transformer blocks
+        self.num_blocks = num_blocks # Number of transformer blocks to stack
+        self.num_heads = num_heads # Number of attention heads per each transfrormer block
+
+        assert in_features > 0, "in_features must be greater than 0"
+        assert num_nodes > 0, "num_nodes must be greater than 0"
+        assert dim_val > 0, "dim_val must be greater than 0"
+        assert dim_id > 0, "dim_id must be greater than 0"
+        assert dim_cond > 0, "dim_cond must be greater than 0"
+        assert dim_t > 0, "dim_t must be greater than 0"
+        assert dim_hidden > 0, "dim_hidden must be greater than 0"
+        assert num_blocks > 0, "num_blocks must be greater than 0"
+        assert num_heads > 0, "num_heads must be greater than 0"
 
         # Tokenize on val
         #? Should this be a repeat rather than Linear?
@@ -124,9 +134,9 @@ class Simformer(nn.Module):
         out = self.out_linear(h)  # [B, T, F]
         return out
 
-# Check that RandomFourierTimeEmbedding is imported and functioning
 def _test_time_embedding():
     print("\n--- Testing RandomFourierTimeEmbedding ---")
+
     # Create a dummy time tensor
     times = torch.linspace(0, 1, steps=4)
     # Instantiate the embedding
@@ -138,6 +148,7 @@ def _test_time_embedding():
 
 def _test_dit_block():
     print("\n--- Testing DiTBlock ---")
+
     # Define dummy parameters for DiTBlock initialization
     in_features_block = 128 # Corresponds to dim_hidden from Simformer's perspective
     dim_hidden_block = 128  # Output dimension of the block (same as input for stacked blocks)
