@@ -61,7 +61,7 @@ class MaskedDiTBlock(DiTBlock):
 
         return x
 
-class Transformer(nn.Module):
+class Simformer(VectorFieldNet):
     def __init__(
             self,
             in_features,
