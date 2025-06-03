@@ -62,13 +62,6 @@ class MaskedDiTBlock(DiTBlock):
         return x
 
 class Transformer(nn.Module):
-    def __init__(self, edge_mask):
-        super().__init__()
-
-    def forward(self, tokens, t):
-        pass
-
-class Simformer(nn.Module):
     def __init__(
             self,
             in_features,
