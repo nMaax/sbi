@@ -5,14 +5,61 @@ from torch import Tensor, nn
 from sbi.neural_nets.net_builders.vector_field_nets import RandomFourierTimeEmbedding
 from sbi.neural_nets.net_builders.vector_field_nets import DiTBlock
 
-class DiTBlock(nn.Module):
-    def __init__(self, edge_mask, in_features, dim_hidden):
-        super().__init__()
-        self.edge_mask = edge_mask
-        self.proj = nn.Linear(in_features, dim_hidden)
+class MaskedDiTBlock(DiTBlock):
+    def __init__(
+        self,
+        edge_mask,
+        hidden_dim,
+        cond_dim,
+        num_heads,
+        mlp_ratio=2,
+        activation=nn.GELU
+    ):
+        super().__init__(hidden_dim, cond_dim, num_heads, mlp_ratio, activation)
+        self.edge_mask = edge_mask  # [T, T] or [B, T, T]
 
-    def forward(self, tokens, t):
-        return self.proj(tokens)
+    def forward(self, x, cond):
+
+        ada_params = self.ada_affine(cond)
+        attn_shift, attn_scale, attn_gate, mlp_shift, mlp_scale, mlp_gate = ada_params.chunk(6, dim=-1)
+        B, T, D = x.shape
+
+        attn_scale = attn_scale.view(B, 1, D)
+        attn_shift = attn_shift.view(B, 1, D)
+        attn_gate = attn_gate.view(B, 1, D)
+        mlp_scale = mlp_scale.view(B, 1, D)
+        mlp_shift = mlp_shift.view(B, 1, D)
+        mlp_gate = mlp_gate.view(B, 1, D)
+
+        # Adaptive LayerNorm before attention
+        x_norm = self.norm1(x)
+        x_norm = x_norm * (attn_scale + 1) + attn_shift
+
+        # Prepare attention mask
+        attn_mask = None
+        if self.edge_mask is not None:
+            # edge_mask: [T, T] or [B, T, T]
+            if self.edge_mask.dim() == 2:
+                attn_mask = self.edge_mask.unsqueeze(0).expand(B, -1, -1)
+            else:
+                attn_mask = self.edge_mask
+            # Convert to additive mask: 0 for allowed, -inf for masked
+            attn_mask = attn_mask.masked_fill(attn_mask == 0, float('-inf')).masked_fill(attn_mask == 1, float(0.0))
+            #! nn.MultiheadAttention expects [B*num_heads, T, T] or [T, T], so flatten batch if needed
+
+        # Self-attention
+        attn_out, _ = self.attn(x_norm, x_norm, x_norm, attn_mask=attn_mask)
+        x = x + attn_gate * attn_out
+
+        # Adaptive LayerNorm before MLP
+        x_norm = self.norm2(x)
+        x_norm = x_norm * (mlp_scale + 1) + mlp_shift
+
+        # MLP
+        mlp_out = self.mlp(x_norm)
+        x = x + mlp_gate * mlp_out
+
+        return x
 
 class Transformer(nn.Module):
     def __init__(self, edge_mask):
@@ -75,9 +122,8 @@ class Simformer(nn.Module):
 
         # Transformer blocks
         self.blocks = nn.ModuleList([
-            DiTBlock(edge_mask, dim_hidden, dim_hidden) for _ in range(num_blocks)
+            MaskedDiTBlock(edge_mask, dim_hidden, dim_t, num_heads) for _ in range(num_blocks)
         ])
-
 
         # Output projection
         self.out_linear = nn.Linear(dim_hidden, in_features)
@@ -150,25 +196,26 @@ def _test_dit_block():
     print("\n--- Testing DiTBlock ---")
 
     # Define dummy parameters for DiTBlock initialization
-    in_features_block = 128 # Corresponds to dim_hidden from Simformer's perspective
-    dim_hidden_block = 128  # Output dimension of the block (same as input for stacked blocks)
     edge_mask = None # Not used in this dummy DiTBlock
+    dim_hidden_block = 128  # Output dimension of the block (same as input for stacked blocks)
+    dim_t = 16 # Dimension of the time embedding
+    num_heads = 8 # Number of attention heads
 
     # Create DiTBlock instance
-    dit_block = DiTBlock(
-        edge_mask=edge_mask,
-        in_features=in_features_block,
-        dim_hidden=dim_hidden_block
+    masked_dit_block = MaskedDiTBlock(
+        edge_mask,
+        dim_hidden_block,
+        dim_t,
+        num_heads,
     )
-    print(f"DiTBlock initialized: {dit_block}")
+    print(f"MaskedDiTBlock initialized: {masked_dit_block}")
 
     # Define dummy input tensor shapes and values
     batch_size = 4
     sequence_length = 15 # T from Simformer (m_theta + n_x)
-    dim_t = 16 # Dimension of the time embedding
 
-    # tokens: [B, T, in_features_block]
-    tokens = torch.randn(batch_size, sequence_length, in_features_block)
+    # tokens (after init projection): [B, T, dim_hidden_block]
+    tokens = torch.randn(batch_size, sequence_length, dim_hidden_block)
     # t_h: [B, dim_t] (time embedding)
     t_h = torch.randn(batch_size, dim_t)
 
@@ -177,25 +224,25 @@ def _test_dit_block():
     # Move to GPU if available
     if torch.cuda.is_available():
         device = torch.device("cuda")
-        dit_block.to(device)
+        masked_dit_block.to(device)
         tokens = tokens.to(device)
         t_h = t_h.to(device)
-        print(f"Moved tensors and DiTBlock to {device}")
+        print(f"Moved tensors and MaskedDiTBlock to {device}")
     else:
         device = torch.device("cpu")
         print(f"Running on CPU (CUDA not available)")
 
     # Perform forward pass
     try:
-        output = dit_block(tokens, t_h)
-        print(f"DiTBlock forward pass successful. Output shape: {output.shape}")
+        output = masked_dit_block(tokens, t_h)
+        print(f"MaskedDiTBlock forward pass successful. Output shape: {output.shape}")
 
         # Assert the output shape
         # Expected output shape: [B, T, dim_hidden_block]
         expected_output_shape = (batch_size, sequence_length, dim_hidden_block)
         assert output.shape == expected_output_shape, \
             f"Expected output shape {expected_output_shape}, but got {output.shape}"
-        print("DiTBlock output shape assertion passed!")
+        print("MaskedDiTBlock output shape assertion passed!")
 
     except AssertionError as e:
         print(f"Assertion Error during DiTBlock test: {e}")
@@ -215,9 +262,6 @@ def _test_simformer():
         in_features=in_features,
         num_nodes=num_nodes,
         edge_mask=edge_mask,
-        num_blocks=2, # Use fewer blocks for faster dummy test
-        dim_hidden=64 # Smaller hidden dim for dummy test
-
     )
     print(f"Simformer initialized: {simformer}")
 
