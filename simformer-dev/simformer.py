@@ -2,8 +2,12 @@ from typing import Callable, Optional
 import torch
 from torch import Tensor, nn
 
+from sbi.utils.vector_field_utils import VectorFieldNet
+from sbi.neural_nets.estimators.score_estimator import ConditionalScoreEstimator
+
 from sbi.neural_nets.net_builders.vector_field_nets import RandomFourierTimeEmbedding
 from sbi.neural_nets.net_builders.vector_field_nets import DiTBlock
+
 
 class MaskedDiTBlock(DiTBlock):
     def __init__(
