@@ -5,34 +5,7 @@ From merge_flow_builders_to_current_main:
 
 ## Pre-existing code
 
-- base_vf_inference.py > VectorFieldInference: interface for the Inference object that will be used by the user, it orchestrates training, sampling, data storing and everything for the user, the following objects will be called by this Interface at various steps in the use of the Simformer
-
-- vector_field_nets.py (which provides DiTBlocks, RandomFourirerTimeEmbedding and other components): code to manage the network itself (Transformer with masking), here I will need to make my Simformer network and a factory function for it
-
-- score_estimators.py (which provides VEScoreEstimator and ConditialScoreEstimator): here I will use these Score Estimators for implementing the loss on my training process, they will take care to add noise and estimate the score function at each training step
-
-- diffuser.py > Diffuser: here I can re-use the diffuser to sample from my Simformer
-
-## Design Sketch for Simformer in `sbi` (PyTorch)
-
-1.  The User Interface: `base_vf_inference.py > VectorFieldInference`
-    - This is the primary interface you, as the user, will interact with. It orchestrates the entire workflow: training your model, managing data, and performing sampling.
-    - It will call upon the various objects and functions defined in the other files at different stages of the Simformer's use.
-
-2.  The Core Neural Network: Your `SimformerNet`
-    - Goal: This will be your custom PyTorch `nn.Module` (similar to a `VectorFieldNet`) designed to learn the score function.
-    - Inputs: It will take a noised observation (your $\theta_t$), a conditioning observation ($x$), and a diffusion time ($t$).
-    - Key Design: You'll build this as a transformer, integrating node embeddings, value embeddings, and importantly, your condition mask and edge mask.
-    - `vector_field_nets.py` (Providing DiTBlocks and other components): While `sbi` offers generic `DiTBlock`s and other network components within this file, you will need to customize or extend them. Your primary task here is to implement your specific `SimformerNet` that incorporates the unique masking logic for your graph-structured data. You will also create a factory function (e.g., `build_simformer_network`) within your own code to properly instantiate your `SimformerNet` based on input/condition dimensions.
-
-3.  The Estimator and Loss: `score_estimators.py > VEScoreEstimator`
-    - Role: This class (specifically `sbi.neural_nets.estimators.score_estimator.VEScoreEstimator`) is fundamental. It manages the Variance Exploding (VE) SDE equations, handles the process of adding noise to your data for training, and computes the denoising score matching loss.
-    - Integration: Your custom factory function (from point 2) will pass an instance of your `SimformerNet` to the `net` argument of `VEScoreEstimator` during its initialization. You'll ensure that the `sigma_min` and `sigma_max` parameters match the noise schedule from your JAX implementation.
-    - Loss Calculation: The `loss` method within `VEScoreEstimator` will implement the core training objective by adding noise to inputs and comparing your `SimformerNet`'s predicted score to the analytical target score.
-
-4.  Time Embeddings: `RandomFourierTimeEmbedding` and `SinusoidalTimeEmbedding`
-    - These reusable components (also found in `vector_field_nets.py` but used across score-based models) are crucial for encoding the scalar diffusion time $t$ into a higher-dimensional vector that your `SimformerNet` can process effectively. You will directly use one of these within your `SimformerNet`.
-
-5.  The Sampler: `diffuser.py > Diffuser`
-    - Role: This class (`sbi.samplers.score.diffuser.Diffuser`) is responsible for orchestrating the reverse SDE (or ODE) solution process. It drives the generation of samples from your learned posterior distribution.
-    - Reusability: You can directly reuse the `Diffuser` class. You will configure it with a `predictor` (e.g., `"euler_maruyama"`) and optionally a `corrector` (e.g., `"langevin"`) to define how samples are propagated through the reverse diffusion process.
+- `base_vf_inference.py` > `VectorFieldInference`: interface for the Inference object that will be used by the user, it orchestrates training, sampling, data storing and everything for the user, the following objects will be called by this Interface at various steps in the use of the Simformer
+- `vector_field_nets.py` (which provides `DiTBlocks`, `RandomFourirerTimeEmbedding` and other components): code to manage the network itself (Transformer with masking), here I will need to make my Simformer network and a factory function for it
+- `score_estimators.py`  (which provides `VEScoreEstimator` and `ConditialScoreEstimator`): here I will use these Score Estimators for implementing the loss on my training process, they will take care to add noise and estimate the score function at each training step
+- `diffuser.py` > `Diffuser`: here I can re-use the diffuser to sample from my Simformer
