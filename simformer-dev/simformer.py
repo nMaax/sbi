@@ -121,7 +121,11 @@ class Transformer(nn.Module):
         # Output projection
         self.out_linear = nn.Linear(dim_hidden, in_features)
 
-
+    #! NOTE: Both VectorFieldNet and ConditionalScoreEstimator were designed expecting a posterior sampling only
+    #! Practically confounding theta == latent, x == conditioning always!
+    #? Maybe you should make a more general class, from which they both extend? Or rather a separate, parallel class
+    #! NOTE: VectorFieldNet defined abstract forward(self, theta, x, t), i.e., it does not expect a (conditioning) mask!
+    #? Can I still pass it?
     def forward(self, theta, x, t, condition_mask):
 
         # Checks for shapes and device
@@ -157,7 +161,7 @@ class Transformer(nn.Module):
         conditioning_h = self.conditioning_parameter.expand(B, T, self.dim_cond) * condition_mask.unsqueeze(-1)  # [B, T, dim_cond]
 
         # Time embedding
-        #? Normalize time
+        #? Should I normalize time?
         t_h = self.time_embedding(t)  # [B, dim_t]
 
         # Concatenate tokens
@@ -170,6 +174,8 @@ class Transformer(nn.Module):
 
         # Output projection
         #? Should this be flattened as [B, T*F]?
+        #! Answer: YES, as defined in score_estimator.py, line 176
+        #! > NOTE: To simplify, use of external networks, we will flatten the tensors"
         out = self.out_linear(h)  # [B, T, F]
         return out
 
