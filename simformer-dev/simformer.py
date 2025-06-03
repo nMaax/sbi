@@ -150,11 +150,11 @@ class Simformer(nn.Module):
         device = theta_device
 
         # Tokenize on val
-        #? Should this rather be cat > linear?
+        #? Should this rather be cat[linear(theta), linear(x)]?
         h = torch.cat([theta, x], dim=1)  # [B, T, F]
         val_h = self.val_linear(h)  # [B, T, dim_val]
 
-        # Tokenize on id
+        # Tokenize the nodes' id
         ids = torch.arange(T, device=device).unsqueeze(0).expand(B, -1)  # [B, T]
         id_h = self.id_embedding(ids)  # [B, T, dim_id]
 
