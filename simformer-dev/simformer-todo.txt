@@ -27,7 +27,7 @@ Which describes how your clean data x0 gradually turns into pure noise xt over t
 
 - dx: A tiny change in your data x.
 - A(t)x dt: The drift term. This is the deterministic part. It describes how the data x tends to move or shrink towards a certain mean over a tiny time step dt.
-- B(t) dW: The diffusion term. This is the stochastic (random) part. It describes how much random noise is added to x over a tiny time step dt. dW is a Wiener process (like random jiggles).
+- B(t) dW: The diffusion term. This is the stochastic (random) part. It describes how much random noise is added to x over a tiny time step dt. dW is a Wiener process.
 
 Given the marginal distribution
 
