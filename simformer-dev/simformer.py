@@ -126,7 +126,7 @@ class Simformer(VectorFieldNet):
     #! NOTE: Both VectorFieldNet and ConditionalScoreEstimator were designed expecting a posterior sampling only
     #! Practically confounding theta == latent, x == conditioning always!
     #? Maybe you should make a more general class, from which they both extend? Or rather a separate, parallel class
-    #! NOTE: VectorFieldNet defined abstract forward(self, theta, x, t), i.e., it does not expect a (conditioning) mask!
+    #! NOTE: VectorFieldNet forward() method does not expect masks
     #? Can I still pass it?
     def forward(self, theta, x, t, condition_mask, edge_mask):
 
