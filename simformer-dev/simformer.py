@@ -8,6 +8,158 @@ from sbi.neural_nets.estimators.score_estimator import ConditionalScoreEstimator
 from sbi.neural_nets.net_builders.vector_field_nets import RandomFourierTimeEmbedding
 from sbi.neural_nets.net_builders.vector_field_nets import DiTBlock
 
+class MaskedConditionalScoreEstimator(ConditionalScoreEstimator):
+    #! Extend from Conditional, and override
+    # class MyConditionalScoreEstimator(ConditionalScoreEstimator):
+    #     def __init__(self, ...):
+    #         ...
+    #
+    #     def forward(self, ..., -cond, +masks):
+    #         # 3D Tensors, not 2D, as input to the net
+    #
+    #     def loss(self, ...):
+    #         # 3D Tensors, not 2D, as input to the net
+
+    #! Note:
+    #!  NO   --> input = ALL THE NODES, condition is a subset of them (those observed)
+    #!  THIS --> input = latent NODEs,  condition is observed;
+    #!           i.e., inputs union condition = ALL NODES,
+    #!                 but input intersect condition = void
+
+    def forward(
+        self,
+        input: Tensor,                              # [B, T, F]
+        time: Tensor,                               # [B] or [B, 1]
+        condition_mask: Optional[Tensor] = None,    # [B, T]
+        edge_mask: Optional[Tensor] = None          # [T, T] or [B, T, T]
+    ) -> Tensor:
+        """
+        Forward pass of the score estimator for Simformer.
+        Args:
+            input: [B, T, F] - all nodes (latent and observed).
+            time: [B] or [B, 1] - diffusion times.
+            condition_mask: [B, T] - True for observed/conditioned nodes.
+            edge_mask: [T, T] or [B, T, T] - attention mask for the transformer.
+        Returns:
+            Score (gradient of the density) at a given time, shape [B, T, F].
+        """
+        device = input.device
+        B, T, F = input.shape
+
+        # Ensure time shape is [B, 1]
+        if time.dim() == 1:
+            time = time.view(B, 1)
+
+        # Compute time-dependent mean and std for z-scoring
+        mean = self.approx_marginal_mean(time)      # [B, 1, F] or broadcastable
+        std = self.approx_marginal_std(time)        # [B, 1, F] or broadcastable
+
+        # Z-score the input
+        input_enc = (input - mean) / std
+
+        # "Skip connection" Gaussian score
+        score_gaussian = (input - mean) / (std ** 2)
+
+        # Model prediction (no flattening, pass masks)
+        score_pred = self.net(input_enc, time.squeeze(-1), condition_mask, edge_mask)  # [B, T, F]
+
+        # Output pre-conditioned score (same scaling as in reference)
+        scale = self.mean_t_fn(time) / self.std_fn(time)
+        # Ensure scale is broadcastable to [B, T, F]
+        while scale.dim() < input.dim():
+            scale = scale.unsqueeze(-1)
+        output_score = -scale * score_pred - score_gaussian
+
+        return output_score
+
+    def score(
+        self,
+        input: Tensor,                            # [B, T, F]
+        time: Tensor,                             # [B] or [B, 1]
+        condition_mask: Optional[Tensor] = None,  # [B, T]
+        edge_mask: Optional[Tensor] = None        # [T, T] or [B, T, T]
+    ) -> Tensor:
+        return self(input=input, time=time, condition_mask=condition_mask, edge_mask=edge_mask)
+
+    def loss(
+        self,
+        input: Tensor,
+        times: Optional[Tensor] = None,
+        condition_mask: Optional[Tensor] = None,
+        edge_mask: Optional[Tensor] = None,
+        weight_fn: Optional[Callable] = None,
+        rebalance_loss: bool = False,
+    ) -> Tensor:
+        """
+        Denoising score matching loss for Simformer.
+        Args:
+            input: [B, T, F] - all nodes (latent and observed).
+            times: [B, 1] or [B] - diffusion times. If None, sampled uniformly.
+            condition_mask: [B, T] - True for observed/conditioned nodes.
+            edge_mask: [T, T] or [B, T, T] - attention mask for the transformer.
+            weight_fn: Callable for weighting the loss over time (optional).
+            rebalance_loss: Whether to rebalance loss by number of unmasked elements.
+        Returns:
+            Scalar loss.
+        """
+        device = input.device
+        B, T, F = input.shape
+
+        # Sample times if not provided
+        if times is None:
+            times = torch.rand(B, 1, device=device) * (self.t_max - self.t_min) + self.t_min  # [B, 1]
+        times = times.view(B, 1)  # Ensure shape [B, 1]
+
+        # Sample noise
+        eps = torch.randn_like(input)  # [B, T, F]
+
+        # Compute mean and std for the SDE
+        mean_t = self.mean_fn(input, times)  # [B, T, F]
+        std_t = self.std_fn(times)           # [B, 1, 1] or [B, 1] or [B]
+        while std_t.dim() < input.dim():
+            std_t = std_t.unsqueeze(-1)
+        std_t = std_t.expand_as(input)       # [B, T, F]
+
+        # Get noised input
+        xs_t = mean_t + std_t * eps          # [B, T, F]
+
+        # Apply condition mask: where condition_mask is True, use input (observed)
+        if condition_mask is not None:
+            mask = condition_mask.bool()
+            xs_t = torch.where(mask.unsqueeze(-1), input, xs_t)
+
+        # Model prediction
+        # Pass edge_mask[0] if edge_mask is batched, else edge_mask as is
+        edge_mask_to_pass = edge_mask[0] if edge_mask is not None and edge_mask.dim() == 3 else edge_mask
+        score_pred = self.forward(xs_t, times.squeeze(-1), condition_mask, edge_mask_to_pass)  # [B, T, F]
+
+        # True score
+        score_target = -eps / std_t
+
+        # Compute loss, mask out observed entries
+        loss = (score_pred - score_target) ** 2  # [B, T, F]
+        if condition_mask is not None:
+            loss = torch.where(mask.unsqueeze(-1), torch.zeros_like(loss), loss)
+
+        # Weight and sum over T and F
+        if weight_fn is None:
+            weights = 1.0
+        else:
+            weights = weight_fn(times)
+            while weights.dim() < loss.dim():
+                weights = weights.unsqueeze(-1)
+        loss = weights * loss.sum(dim=-1)  # sum over F, shape [B, T]
+
+        # Optionally rebalance by number of unmasked elements per sequence
+        if rebalance_loss and condition_mask is not None:
+            num_unmasked = (~mask).sum(dim=-1)  # [B]
+            loss = torch.where(num_unmasked > 0, loss.sum(dim=-1) / num_unmasked, torch.zeros_like(loss.sum(dim=-1)))
+        else:
+            loss = loss.sum(dim=-1)  # sum over T
+
+        # Final mean over batch
+        loss = loss.mean()
+        return loss
 
 class MaskedDiTBlock(DiTBlock):
     def __init__(
