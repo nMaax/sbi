@@ -2,7 +2,7 @@ from typing import Callable, Optional
 import torch
 from torch import Tensor, nn
 
-from sbi.utils.vector_field_utils import VectorFieldNet
+from sbi.utils.vector_field_utils import MaskedVectorFieldNet
 from sbi.neural_nets.estimators.score_estimator import ConditionalScoreEstimator
 
 from sbi.neural_nets.net_builders.vector_field_nets import RandomFourierTimeEmbedding
@@ -39,20 +39,14 @@ class MaskedDiTBlock(DiTBlock):
         x_norm = x_norm * (attn_scale + 1) + attn_shift
 
         # Prepare attention mask
-        attn_mask = None
         if mask is not None:
-            # mask: [T, T] or [B, T, T]
-            if mask.dim() == 2:
-                attn_mask = mask.unsqueeze(0).expand(B, -1, -1)
-            else:
-                attn_mask = mask
             # Ensure the mask is boolean: True for masked, False for allowed
-            attn_mask = attn_mask.bool()
+            mask = mask.bool()
             #! nn.MultiheadAttention expects a boolean mask with True for masked positions
             #? nn.MultiheadAttention expects [B*num_heads, T, T] or [T, T], so flatten batch if needed?
 
         # Self-attention
-        attn_out, _ = self.attn(x_norm, x_norm, x_norm, attn_mask=attn_mask)
+        attn_out, _ = self.attn(x_norm, x_norm, x_norm, attn_mask=mask)
         x = x + attn_gate * attn_out
 
         # Adaptive LayerNorm before MLP
@@ -65,7 +59,7 @@ class MaskedDiTBlock(DiTBlock):
 
         return x
 
-class Simformer(VectorFieldNet):
+class Simformer(MaskedVectorFieldNet):
     def __init__(
             self,
             in_features,
@@ -128,30 +122,17 @@ class Simformer(VectorFieldNet):
     #? Maybe you should make a more general class, from which they both extend? Or rather a separate, parallel class
     #! NOTE: VectorFieldNet forward() method does not expect masks
     #? Can I still pass it?
-    def forward(self, theta, x, t, condition_mask, edge_mask):
+    def forward(self, inputs, t, condition_mask, edge_mask):
 
-        # Checks for shapes and device
-        B_theta, m, F_theta = theta.shape
-        B_x, n, F_x = x.shape
-        assert B_theta == B_x, f"theta and x must have the same batch size: {B_theta=} != {B_x=}"
-        assert F_theta == F_x == self.in_features, f"theta and x must have the same feature dimension as the one declared in init{self.in_features}: {F_theta=}, {F_x=}"
+        device = inputs.device
+        B, T, F = inputs.shape
 
-        B = B_theta
-        T = m + n
-        F = self.in_features
-
-        assert condition_mask.shape == (B, T), "condition_mask must have the same batch size and sequence length as theta"
-
-        theta_device = theta.device
-        x_device = x.device
-        assert theta_device == x_device, "theta and x must be on the same device"
-
-        device = theta_device
+        assert condition_mask.shape == (B, T), "condition_mask must have the same batch size and sequence length as inputs"
+        assert edge_mask.shape == (T, T), "edge_mask must have same shape as the sequence length"
 
         # Tokenize on val
         #? Should this rather be cat[linear(theta), linear(x)]?
-        h = torch.cat([theta, x], dim=1)  # [B, T, F]
-        val_h = self.val_linear(h)  # [B, T, dim_val]
+        val_h = self.val_linear(inputs) # [B, T, dim_val]
 
         # Tokenize the nodes' id
         ids = torch.arange(T, device=device).unsqueeze(0).expand(B, -1)  # [B, T]
@@ -176,8 +157,7 @@ class Simformer(VectorFieldNet):
 
         # Output projection
         #? Should this be flattened as [B, T*F]?
-        #! Answer: YES, as defined in score_estimator.py, line 176
-        #! > NOTE: To simplify, use of external networks, we will flatten the tensors"
+        #! Answer: No, as you will use your own score estimator
         out = self.out_linear(h)  # [B, T, F]
         return out
 
@@ -270,10 +250,12 @@ def _test_simformer():
     theta = torch.randn(batch_size, m_theta, in_features)
     # x: [B, n, F_x]
     x = torch.randn(batch_size, n_x, in_features)
+    # inputs: [theta, x] on second dimension
+    inputs = torch.cat([theta, x], dim=1)
     # t: [B] (time value for each batch item)
     t = torch.rand(batch_size) # Random time between 0 and 1
     # Not used in dummy DiTBlock, but needed for init
-    edge_mask = None
+    edge_mask = torch.ones(total_T, total_T)
     # condition_mask: [B, T] (boolean mask)
     # Example: First 'm_theta' elements are always conditioned, rest are random
     condition_mask = torch.cat([
@@ -287,10 +269,10 @@ def _test_simformer():
     if torch.cuda.is_available():
         device = torch.device("cuda")
         simformer.to(device)
-        theta = theta.to(device)
-        x = x.to(device)
+        inputs = inputs.to(device)
         t = t.to(device)
         condition_mask = condition_mask.to(device)
+        edge_mask = edge_mask.to(device)
         print(f"Moved tensors and model to {device}")
     else:
         device = torch.device("cpu")
@@ -299,7 +281,7 @@ def _test_simformer():
 
     # Perform forward pass
 
-    output = simformer(theta, x, t, condition_mask, edge_mask)
+    output = simformer(inputs, t, condition_mask, edge_mask)
     print(f"Simformer forward pass successful. Output shape: {output.shape}")
 
     # Assert the output shape
