@@ -46,9 +46,10 @@ class MaskedDiTBlock(DiTBlock):
                 attn_mask = mask.unsqueeze(0).expand(B, -1, -1)
             else:
                 attn_mask = mask
-            # Convert to additive mask: 0 for allowed, -inf for masked
-            attn_mask = attn_mask.masked_fill(attn_mask == 0, float('-inf')).masked_fill(attn_mask == 1, float(0.0))
-            #! nn.MultiheadAttention expects [B*num_heads, T, T] or [T, T], so flatten batch if needed
+            # Ensure the mask is boolean: True for masked, False for allowed
+            attn_mask = attn_mask.bool()
+            #! nn.MultiheadAttention expects a boolean mask with True for masked positions
+            #? nn.MultiheadAttention expects [B*num_heads, T, T] or [T, T], so flatten batch if needed?
 
         # Self-attention
         attn_out, _ = self.attn(x_norm, x_norm, x_norm, attn_mask=attn_mask)
