@@ -54,6 +54,9 @@ class MaskedConditionalScoreEstimator(ConditionalScoreEstimator):
         mean = self.approx_marginal_mean(time)      # [B, 1, F] or broadcastable
         std = self.approx_marginal_std(time)        # [B, 1, F] or broadcastable
 
+        #! Skipped, as Simformer expects time as it is, not as a level of std
+        # time_enc = self.std_fn(time)
+
         # Z-score the input
         input_enc = (input - mean) / std
 
@@ -84,11 +87,11 @@ class MaskedConditionalScoreEstimator(ConditionalScoreEstimator):
     def loss(
         self,
         input: Tensor,
-        times: Optional[Tensor] = None,
-        condition_mask: Optional[Tensor] = None,
-        edge_mask: Optional[Tensor] = None,
-        weight_fn: Optional[Callable] = None,
-        rebalance_loss: bool = False,
+        times: Optional[Tensor] = None, #! Where do I generate it? In the training loop!
+        condition_mask: Optional[Tensor] = None, #! Where do I generate it? In the training loop!
+        edge_mask: Optional[Tensor] = None, #! Where do I generate it? In the training loop!
+        control_variate=True,
+        control_variate_threshold=0.3,
     ) -> Tensor:
         """
         Denoising score matching loss for Simformer.
@@ -108,7 +111,7 @@ class MaskedConditionalScoreEstimator(ConditionalScoreEstimator):
         # Sample times if not provided
         if times is None:
             times = torch.rand(B, 1, device=device) * (self.t_max - self.t_min) + self.t_min  # [B, 1]
-        times = times.view(B, 1)  # Ensure shape [B, 1]
+        times = times.view(B, 1) # Ensure shape [B, 1]
 
         # Sample noise
         eps = torch.randn_like(input)  # [B, T, F]
@@ -121,45 +124,27 @@ class MaskedConditionalScoreEstimator(ConditionalScoreEstimator):
         std_t = std_t.expand_as(input)       # [B, T, F]
 
         # Get noised input
-        xs_t = mean_t + std_t * eps          # [B, T, F]
-
-        # Apply condition mask: where condition_mask is True, use input (observed)
-        if condition_mask is not None:
-            mask = condition_mask.bool()
-            xs_t = torch.where(mask.unsqueeze(-1), input, xs_t)
-
-        # Model prediction
-        # Pass edge_mask[0] if edge_mask is batched, else edge_mask as is
-        edge_mask_to_pass = edge_mask[0] if edge_mask is not None and edge_mask.dim() == 3 else edge_mask
-        score_pred = self.forward(xs_t, times.squeeze(-1), condition_mask, edge_mask_to_pass)  # [B, T, F]
+        input_noised = mean_t + std_t * eps  # [B, T, F]
 
         # True score
         score_target = -eps / std_t
 
-        # Compute loss, mask out observed entries
-        loss = (score_pred - score_target) ** 2  # [B, T, F]
+        # Apply condition mask: where condition_mask is True, use input (observed)
         if condition_mask is not None:
-            loss = torch.where(mask.unsqueeze(-1), torch.zeros_like(loss), loss)
+            mask = condition_mask.bool()
+            input_noised = torch.where(mask.unsqueeze(-1), input, input_noised)
+
+        # Model prediction
+        score_pred = self.forward(input_noised, times.squeeze(-1), condition_mask, edge_mask)  # [B, T, F]
+
+        # Compute MSE loss, mask out observed entries
+        loss = torch.sum((score_pred - score_target) ** 2.0, dim=-1)  # [B, T] (sum tensor of shape [B, T, F] over F)
+        if condition_mask is not None:
+            loss = torch.where(mask, torch.zeros_like(loss), loss)
 
         # Weight and sum over T and F
-        if weight_fn is None:
-            weights = 1.0
-        else:
-            weights = weight_fn(times)
-            while weights.dim() < loss.dim():
-                weights = weights.unsqueeze(-1)
-        loss = weights * loss.sum(dim=-1)  # sum over F, shape [B, T]
+        weights = self.weight_fn(times)
 
-        # Optionally rebalance by number of unmasked elements per sequence
-        if rebalance_loss and condition_mask is not None:
-            num_unmasked = (~mask).sum(dim=-1)  # [B]
-            loss = torch.where(num_unmasked > 0, loss.sum(dim=-1) / num_unmasked, torch.zeros_like(loss.sum(dim=-1)))
-        else:
-            loss = loss.sum(dim=-1)  # sum over T
-
-        # Final mean over batch
-        loss = loss.mean()
-        return loss
 
 class MaskedDiTBlock(DiTBlock):
     def __init__(
