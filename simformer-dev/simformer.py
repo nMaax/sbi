@@ -12,7 +12,6 @@ from sbi.neural_nets.net_builders.vector_field_nets import DiTBlock
 class MaskedDiTBlock(DiTBlock):
     def __init__(
         self,
-        edge_mask,
         hidden_dim,
         cond_dim,
         num_heads,
@@ -20,9 +19,9 @@ class MaskedDiTBlock(DiTBlock):
         activation=nn.GELU
     ):
         super().__init__(hidden_dim, cond_dim, num_heads, mlp_ratio, activation)
-        self.edge_mask = edge_mask  # [T, T] or [B, T, T]
 
-    def forward(self, x, cond):
+    #! The original DiTBlock do not use mask
+    def forward(self, x, cond, mask):
 
         ada_params = self.ada_affine(cond)
         attn_shift, attn_scale, attn_gate, mlp_shift, mlp_scale, mlp_gate = ada_params.chunk(6, dim=-1)
@@ -41,12 +40,12 @@ class MaskedDiTBlock(DiTBlock):
 
         # Prepare attention mask
         attn_mask = None
-        if self.edge_mask is not None:
-            # edge_mask: [T, T] or [B, T, T]
-            if self.edge_mask.dim() == 2:
-                attn_mask = self.edge_mask.unsqueeze(0).expand(B, -1, -1)
+        if mask is not None:
+            # mask: [T, T] or [B, T, T]
+            if mask.dim() == 2:
+                attn_mask = mask.unsqueeze(0).expand(B, -1, -1)
             else:
-                attn_mask = self.edge_mask
+                attn_mask = mask
             # Convert to additive mask: 0 for allowed, -inf for masked
             attn_mask = attn_mask.masked_fill(attn_mask == 0, float('-inf')).masked_fill(attn_mask == 1, float(0.0))
             #! nn.MultiheadAttention expects [B*num_heads, T, T] or [T, T], so flatten batch if needed
@@ -70,7 +69,6 @@ class Simformer(VectorFieldNet):
             self,
             in_features,
             num_nodes,
-            edge_mask,
             dim_val=64,
             dim_id=32,
             dim_cond=16,
@@ -82,7 +80,6 @@ class Simformer(VectorFieldNet):
         super().__init__()
         self.in_features = in_features # Number of features by each node (F)
         self.num_nodes = num_nodes # Number of nodes in the DAG (T = m + n)
-        self.edge_mask = edge_mask # Mask for dependency edges among nodes
         self.dim_val = dim_val # Dimension of the value token
         self.dim_id = dim_id # Dimension of the id token
         self.dim_cond = dim_cond # Dimension of the conditioning token
@@ -119,7 +116,7 @@ class Simformer(VectorFieldNet):
 
         # Transformer blocks
         self.blocks = nn.ModuleList([
-            MaskedDiTBlock(edge_mask, dim_hidden, dim_t, num_heads) for _ in range(num_blocks)
+            MaskedDiTBlock(dim_hidden, dim_t, num_heads) for _ in range(num_blocks)
         ])
 
         # Output projection
@@ -130,7 +127,7 @@ class Simformer(VectorFieldNet):
     #? Maybe you should make a more general class, from which they both extend? Or rather a separate, parallel class
     #! NOTE: VectorFieldNet defined abstract forward(self, theta, x, t), i.e., it does not expect a (conditioning) mask!
     #? Can I still pass it?
-    def forward(self, theta, x, t, condition_mask):
+    def forward(self, theta, x, t, condition_mask, edge_mask):
 
         # Checks for shapes and device
         B_theta, m, F_theta = theta.shape
@@ -174,7 +171,7 @@ class Simformer(VectorFieldNet):
 
         # Pass through transformer blocks
         for block in self.blocks:
-            h = block(h, t_h)
+            h = block(h, t_h, edge_mask)
 
         # Output projection
         #? Should this be flattened as [B, T*F]?
@@ -199,14 +196,12 @@ def _test_dit_block():
     print("\n--- Testing DiTBlock ---")
 
     # Define dummy parameters for DiTBlock initialization
-    edge_mask = None # Not used in this dummy DiTBlock
     dim_hidden_block = 128  # Output dimension of the block (same as input for stacked blocks)
     dim_t = 16 # Dimension of the time embedding
     num_heads = 8 # Number of attention heads
 
     # Create DiTBlock instance
     masked_dit_block = MaskedDiTBlock(
-        edge_mask,
         dim_hidden_block,
         dim_t,
         num_heads,
@@ -222,6 +217,8 @@ def _test_dit_block():
     # t_h: [B, dim_t] (time embedding)
     t_h = torch.randn(batch_size, dim_t)
 
+    edge_mask = None # Not used in this dummy DiTBlock
+
     print(f"Input shapes: tokens={tokens.shape}, t_h={t_h.shape}")
 
     # Move to GPU if available
@@ -230,27 +227,23 @@ def _test_dit_block():
         masked_dit_block.to(device)
         tokens = tokens.to(device)
         t_h = t_h.to(device)
+        if edge_mask:
+            edge_mask = edge_mask.to(device)
         print(f"Moved tensors and MaskedDiTBlock to {device}")
     else:
         device = torch.device("cpu")
         print(f"Running on CPU (CUDA not available)")
 
     # Perform forward pass
-    try:
-        output = masked_dit_block(tokens, t_h)
-        print(f"MaskedDiTBlock forward pass successful. Output shape: {output.shape}")
+    output = masked_dit_block(tokens, t_h, edge_mask)
+    print(f"MaskedDiTBlock forward pass successful. Output shape: {output.shape}")
 
-        # Assert the output shape
-        # Expected output shape: [B, T, dim_hidden_block]
-        expected_output_shape = (batch_size, sequence_length, dim_hidden_block)
-        assert output.shape == expected_output_shape, \
-            f"Expected output shape {expected_output_shape}, but got {output.shape}"
-        print("MaskedDiTBlock output shape assertion passed!")
-
-    except AssertionError as e:
-        print(f"Assertion Error during DiTBlock test: {e}")
-    except Exception as e:
-        print(f"An unexpected error occurred during DiTBlock test: {e}")
+    # Assert the output shape
+    # Expected output shape: [B, T, dim_hidden_block]
+    expected_output_shape = (batch_size, sequence_length, dim_hidden_block)
+    assert output.shape == expected_output_shape, \
+        f"Expected output shape {expected_output_shape}, but got {output.shape}"
+    print("MaskedDiTBlock output shape assertion passed!")
 
 def _test_simformer():
     print("\n--- Testing Simformer ---")
@@ -258,20 +251,18 @@ def _test_simformer():
     # Define dummy parameters for Simformer initialization
     in_features = 5      # Dimension of input features for theta and x
     num_nodes = 20       # Total possible nodes (m + n should be less than or equal to this)
-    edge_mask = None     # Not used in dummy DiTBlock, but needed for init
 
     # Create Simformer instance
     simformer = Simformer(
         in_features=in_features,
         num_nodes=num_nodes,
-        edge_mask=edge_mask,
     )
     print(f"Simformer initialized: {simformer}")
 
     # Define dummy input tensor shapes and values
     batch_size = 4
-    m_theta = 10         # Number of nodes/elements in theta
-    n_x = 5              # Number of nodes/elements in x
+    m_theta = 10            # Number of nodes/elements in theta
+    n_x = 5                 # Number of nodes/elements in x
     total_T = m_theta + n_x # Total sequence length
 
     # theta: [B, m, F_theta]
@@ -279,7 +270,9 @@ def _test_simformer():
     # x: [B, n, F_x]
     x = torch.randn(batch_size, n_x, in_features)
     # t: [B] (time value for each batch item)
-    t = torch.rand(batch_size) * 1000 # Random time between 0 and 1000
+    t = torch.rand(batch_size) # Random time between 0 and 1
+    # Not used in dummy DiTBlock, but needed for init
+    edge_mask = None
     # condition_mask: [B, T] (boolean mask)
     # Example: First 'm_theta' elements are always conditioned, rest are random
     condition_mask = torch.cat([
@@ -304,22 +297,18 @@ def _test_simformer():
 
 
     # Perform forward pass
-    try:
-        output = simformer(theta, x, t, condition_mask)
-        print(f"Simformer forward pass successful. Output shape: {output.shape}")
 
-        # Assert the output shape
-        # Expected output shape: [B, T, F]
-        expected_output_shape = (batch_size, total_T, in_features)
-        assert output.shape == expected_output_shape, \
-            f"Expected output shape {expected_output_shape}, but got {output.shape}"
+    output = simformer(theta, x, t, condition_mask, edge_mask)
+    print(f"Simformer forward pass successful. Output shape: {output.shape}")
 
-        print("Simformer output shape assertion passed!")
+    # Assert the output shape
+    # Expected output shape: [B, T, F]
+    expected_output_shape = (batch_size, total_T, in_features)
+    assert output.shape == expected_output_shape, \
+        f"Expected output shape {expected_output_shape}, but got {output.shape}"
 
-    except AssertionError as e:
-        print(f"Assertion Error during Simformer test: {e}")
-    except Exception as e:
-        print(f"An unexpected error occurred during Simformer test: {e}")
+    print("Simformer output shape assertion passed!")
+
 
 
 # Run the test when this file is executed directly
