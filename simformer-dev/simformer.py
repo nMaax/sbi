@@ -6,9 +6,9 @@ import torch
 from torch import Tensor, nn
 
 from sbi.neural_nets.estimators.score_estimator import MaskedConditionalScoreEstimator
-from sbi.neural_nets.vector_field_net import MaskedVectorFieldNet
-from sbi.neural_nets.di_t_block import DiTBlock
-from sbi.neural_nets.random_fourier_time_embedding import RandomFourierTimeEmbedding
+from sbi.utils.vector_field_utils import MaskedVectorFieldNet
+from sbi.neural_nets.net_builders.vector_field_nets import DiTBlock
+from sbi.neural_nets.net_builders.vector_field_nets import RandomFourierTimeEmbedding
 
 
 class MaskedVEScoreEstimator(MaskedConditionalScoreEstimator):
