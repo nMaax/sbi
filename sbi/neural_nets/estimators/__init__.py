@@ -1,6 +1,7 @@
 from sbi.neural_nets.estimators.base import (
     ConditionalDensityEstimator,
     ConditionalVectorFieldEstimator,
+    MaskedConditionalVectorFieldEstimator,
     UnconditionalDensityEstimator,
 )
 from sbi.neural_nets.estimators.categorical_net import (
