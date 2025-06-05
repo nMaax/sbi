@@ -12,7 +12,12 @@ class MaskedConditionalEstimator(nn.Module, ABC):
     r""" """
 
     def __init__(self, input_shape: Tuple) -> None:
-        r""" """
+        r"""Construct a conditional estimator given input shape.
+
+        Args:
+            input_shape: Event shape of the input at which the density is being
+                evaluated (and which is also the event_shape of samples).
+        """
         super().__init__()
         self._input_shape = torch.Size(input_shape)
 
@@ -22,8 +27,16 @@ class MaskedConditionalEstimator(nn.Module, ABC):
         return self._input_shape
 
     @abstractmethod
-    def loss(self, input: Tensor, condition: Tensor, **kwargs) -> Tensor:
-        r""" """
+    def loss(self, input: Tensor, **kwargs) -> Tensor:
+        r"""Return the loss for training the estimator.
+
+        Args:
+            input: Inputs to evaluate the loss on of shape
+                `(batch_dim, *input_event_shape)`.
+
+        Returns:
+            Loss of shape (batch_dim,)
+        """
         pass
 
     def _check_input_shape(self, input: Tensor):
@@ -302,13 +315,11 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
         mean_base: float = 0.0,
         std_base: float = 1.0,
     ) -> None:
-        r"""Base class for vector field estimators.
+        r"""Base class for masked vector field estimators.
 
         Args:
             net: Neural network.
             input_shape: Shape of the input.
-            condition_shape: Shape of the condition. If not provided, it will assume a
-                            1D input.
             t_min: Minimum time for the vector field estimator.
             t_max: Maximum time for the vector field estimator.
             mean_base: Mean of the base distribution.
@@ -333,12 +344,11 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
         )
 
     @abstractmethod
-    def forward(self, input: Tensor, condition: Tensor, **kwargs) -> Tensor:
+    def forward(self, input: Tensor, **kwargs) -> Tensor:
         r"""Forward pass of the score estimator.
 
         Args:
             input: Input variable :math:`\theta_t`.
-            condition: Conditioning variable :math:`x_o`.
 
         Raises:
             NotImplementedError: This method should be implemented by sub-classes.
@@ -364,7 +374,7 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
     # -------------------------- ODE METHODS --------------------------
 
     @abstractmethod
-    def ode_fn(self, input: Tensor, condition: Tensor, times: Tensor) -> Tensor:
+    def ode_fn(self, input: Tensor, times: Tensor) -> Tensor:
         r"""ODE flow function :math:`v(\theta_t, t, x_o)` of the vector field estimator.
 
         The target distribution can be sampled from by solving the following ODE:
@@ -376,7 +386,6 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
 
         Args:
             input: variable whose distribution is estimated.
-            condition: Conditioning variable.
             t: Time.
 
         Raises:
@@ -386,7 +395,7 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
 
     # -------------------------- SDE METHODS --------------------------
 
-    def score(self, input: Tensor, condition: Tensor, t: Tensor) -> Tensor:
+    def score(self, input: Tensor, t: Tensor) -> Tensor:
         r"""Time-dependent score function
 
         .. math::
@@ -394,7 +403,6 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
 
         Args:
             input: Input parameters :math:`\theta_t`.
-            condition: Conditioning variable :math:`x_o`.
             t: Time.
 
         Raises:
