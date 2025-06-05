@@ -157,7 +157,6 @@ class MaskedDiTBlock(DiTBlock):
     ):
         super().__init__(hidden_dim, cond_dim, num_heads, mlp_ratio, activation)
 
-    #! The original DiTBlock do not use mask
     def forward(self, x, cond, mask):
 
         ada_params = self.ada_affine(cond)
@@ -179,7 +178,6 @@ class MaskedDiTBlock(DiTBlock):
         if mask is not None:
             # Ensure the mask is boolean: True for masked, False for allowed
             mask = mask.bool()
-            #! nn.MultiheadAttention expects a boolean mask with True for masked positions
             #? nn.MultiheadAttention expects [B*num_heads, T, T] or [T, T], so flatten batch if needed?
 
         # Self-attention
@@ -254,11 +252,6 @@ class Simformer(MaskedVectorFieldNet):
         # Output projection
         self.out_linear = nn.Linear(dim_hidden, in_features)
 
-    #! NOTE: Both VectorFieldNet and ConditionalScoreEstimator were designed expecting a posterior sampling only
-    #! Practically confounding theta == latent, x == conditioning always!
-    #? Maybe you should make a more general class, from which they both extend? Or rather a separate, parallel class
-    #! NOTE: VectorFieldNet forward() method does not expect masks
-    #? Can I still pass it?
     def forward(self, inputs, t, condition_mask, edge_mask):
 
         device = inputs.device
@@ -310,7 +303,7 @@ def _test_time_embedding():
     assert out.shape == (4, 8), f"Expected output shape (4, 8), got {out.shape}"
     print("RandomFourierTimeEmbedding test passed!")
 
-def _test_dit_block():
+def _test_masked_dit_block():
     print("\n--- Testing DiTBlock ---")
 
     # Define dummy parameters for DiTBlock initialization
@@ -434,5 +427,5 @@ def _test_simformer():
 # Run the test when this file is executed directly
 if __name__ == "__main__":
     _test_time_embedding()
-    _test_dit_block()
+    _test_masked_dit_block()
     _test_simformer()
