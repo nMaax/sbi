@@ -7,8 +7,445 @@ from typing import Callable, Optional, Union
 import torch
 from torch import Tensor, nn
 
-from sbi.neural_nets.estimators.base import ConditionalVectorFieldEstimator
-from sbi.utils.vector_field_utils import VectorFieldNet
+from sbi.neural_nets.estimators.base import (
+    ConditionalVectorFieldEstimator,
+    MaskedConditionalVectorFieldEstimator,
+)
+from sbi.utils.vector_field_utils import MaskedVectorFieldNet, VectorFieldNet
+
+
+class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
+    #! Extend from Conditional, and override
+    # class MyConditionalScoreEstimator(ConditionalScoreEstimator):
+    #     def __init__(self, ...):
+    #         ...
+    #
+    #     def forward(self, ..., -cond, +masks):
+    #         # 3D Tensors, not 2D, as input to the net
+    #
+    #     def loss(self, ...):
+    #         # 3D Tensors, not 2D, as input to the net
+
+    #! Note:
+    #!  NO   --> input = ALL THE NODES, condition is a subset of them (those observed)
+    #!  THIS --> input = latent NODEs,  condition is observed;
+    #!           i.e., inputs union condition = ALL NODES,
+    #!                 but input intersect condition = void
+
+    # Whether the score is defined for this estimator.
+    # Required for gradient-based methods.
+    SCORE_DEFINED: bool = True
+    # Whether the SDE functions - score, drift and diffusion -
+    #  are defined for this estimator.
+    SDE_DEFINED: bool = True
+    # Whether the marginals are defined for this estimator.
+    # Required for iid methods.
+    MARGINALS_DEFINED: bool = True
+
+    def __init__(
+        self,
+        net: Union[MaskedVectorFieldNet, nn.Module],
+        input_shape: torch.Size,
+        embedding_net: nn.Module = nn.Identity(),
+        weight_fn: Union[str, Callable] = "max_likelihood",
+        mean_0: Union[Tensor, float] = 0.0,
+        std_0: Union[Tensor, float] = 1.0,
+        t_min: float = 1e-3,
+        t_max: float = 1.0,
+    ) -> None:
+        r"""Score estimator class that estimates the
+        conditional score function, i.e.,
+        gradient of the density p(xt|x0).
+
+        Args:
+            net: Score estimator neural network with call signature: input, condition,
+                and time (in [0,1])].
+            input_shape: Shape of the input, e.g., the parameters.
+            embedding_net: Network to embed the conditioning variable before passing it
+                to the score network.
+            weight_fn: Function to compute the weights over time. Can be one of the
+                following:
+                - "identity": constant weights (1.),
+                - "max_likelihood": weights proportional to the diffusion function, or
+                - a custom function that returns a Callable.
+            mean_0: Starting mean of the target distribution.
+            std_0: Starting standard deviation of the target distribution.
+            t_min: Minimum time for diffusion (0 can be numerically unstable).
+            t_max: Maximum time for diffusion.
+        """
+        super().__init__(net, input_shape)
+
+        # Store embedding network
+        self._embedding_net = embedding_net
+
+        # Set lambdas (variance weights) function.
+        self._set_weight_fn(weight_fn)
+
+        # Starting mean and std of the target distribution (otherwise assumes 0,1).
+        # This will be used to precondition the score network to improve training.
+        if not isinstance(mean_0, Tensor):
+            mean_0 = torch.tensor([mean_0])
+        if not isinstance(std_0, Tensor):
+            std_0 = torch.tensor([std_0])
+
+        self.register_buffer("mean_0", mean_0.clone().detach())
+        self.register_buffer("std_0", std_0.clone().detach())
+
+        # We estimate the mean and std of the source distribution at time t_max.
+        mean_t = self.approx_marginal_mean(torch.tensor([t_max]))
+        std_t = self.approx_marginal_std(torch.tensor([t_max]))
+        mean_t = torch.broadcast_to(mean_t, (1, *input_shape))
+        std_t = torch.broadcast_to(std_t, (1, *input_shape))
+        self._mean_base = mean_t
+        self._std_base = std_t
+
+        self.t_min = t_min
+        self.t_max = t_max
+
+    @property
+    def embedding_net(self):
+        r"""Return the embedding network."""
+        return self._embedding_net
+
+    def forward(
+        self,
+        input: Tensor,  # [B, T, F]
+        time: Tensor,  # [B] or [B, 1]
+        condition_mask: Optional[Tensor] = None,  # [B, T]
+        edge_mask: Optional[Tensor] = None,  # [T, T] or [B, T, T]
+    ) -> Tensor:
+        r"""Forward pass of the score estimator
+        network to compute the conditional score
+        at a given time.
+
+        Args:
+            input: Original data, x0. (input_batch_shape, *input_shape)
+            time: SDE time variable in [0,1].
+            condition_mask: Mask indicating which nodes are observed (conditioned on)
+                or latent (conditioned off).
+            edge_mask: Mask for edges in the DAG, i.e., dependecies between
+                variables (nodes).
+
+        Returns:
+            Score (gradient of the density) at a given time, matches input shape.
+        """
+        B, T, F = input.shape
+
+        # Ensure time shape is [B, 1]
+        if time.dim() == 1:
+            time = time.view(B, 1)
+
+        # Compute time-dependent mean and std for z-scoring
+        mean = self.approx_marginal_mean(time)  # [B, 1, F] or broadcastable
+        std = self.approx_marginal_std(time)  # [B, 1, F] or broadcastable
+
+        #! Skipped, as Simformer expects time as it is, not as a level of std
+        # time_enc = self.std_fn(time)
+
+        # Z-score the input
+        input_enc = (input - mean) / std
+
+        # "Skip connection" Gaussian score
+        score_gaussian = (input - mean) / (std**2)
+
+        # Model prediction (no flattening, pass masks)
+        score_pred = self.net(
+            input_enc, time.squeeze(-1), condition_mask, edge_mask
+        )  # [B, T, F]
+
+        # Output pre-conditioned score (same scaling as in reference)
+        scale = self.mean_t_fn(time) / self.std_fn(time)
+
+        # ? Ensure scale is broadcastable to [B, T, F]
+        while scale.dim() < input.dim():
+            scale = scale.unsqueeze(-1)
+
+        output_score = -scale * score_pred - score_gaussian
+
+        return output_score
+
+    def score(
+        self,
+        input: Tensor,  # [B, T, F]
+        time: Tensor,  # [B] or [B, 1]
+        condition_mask: Optional[Tensor] = None,  # [B, T]
+        edge_mask: Optional[Tensor] = None,  # [T, T] or [B, T, T]
+    ) -> Tensor:
+        r"""Score function of the score estimator.
+
+        Args:
+            input: variable whose distribution is estimated.
+            time: Time.
+            condition_mask: Mask indicating which nodes are observed (conditioned on)
+                or latent (conditioned off).
+            edge_mask: Mask for edges in the DAG, i.e., dependecies between
+                variables (nodes).
+
+        Returns:
+            Score function value.
+        """
+        return self(
+            input=input, time=time, condition_mask=condition_mask, edge_mask=edge_mask
+        )
+
+    def loss(
+        self,
+        input: Tensor,
+        times: Optional[Tensor] = None,  # ? Generated at training loop!
+        condition_mask: Optional[Tensor] = None,  # ? Generated at training loop!
+        edge_mask: Optional[Tensor] = None,  # ? Generated at training loop!
+        control_variate=True,
+        control_variate_threshold=0.3,
+    ) -> Tensor:
+        r"""Defines the denoising score matching loss (e.g., from Song et al., ICLR
+        2021). A random diffusion time is sampled from [0,1], and the network is trained
+        to predict thescore of the true conditional distribution given the noised input,
+        which is equivalent to predicting the (scaled) Gaussian noise added to the
+        input.
+
+        Args:
+            input: Input variable i.e. theta.
+            times: SDE time variable in [t_min, t_max]. Uniformly sampled if None.
+            condition_mask: Mask indicating which nodes are observed (conditioned on)
+                or latent (conditioned off). If not provided, it will be
+                automatically generate by a Bernoulli(p=0.33)
+            edge_mask: Mask for edges in the DAG, i.e., dependecies between
+                variables (nodes). If not provided, it will be
+                automatically generated as a full-connected DAG, i.e., a tensor of ones
+            control_variate: Whether to use a control variate to reduce the variance of
+                the stochastic loss estimator.
+            control_variate_threshold: Threshold for the control variate. If the std
+                exceeds this threshold, the control variate is not used. This is because
+                the control variate assumes a Taylor expansion of the score around the
+                mean, which is not valid for large std.
+
+        Returns:
+            MSE between target score and network output, scaled by the weight function.
+
+        """
+        device = input.device
+        B, T, F = input.shape
+
+        # Sample times if not provided
+        if times is None:
+            times = torch.rand(B, 1, device=device)
+            times = times * (self.t_max - self.t_min)
+            times = times + self.t_min  # [B, 1]
+        times = times.view(B, 1)  # Ensure shape [B, 1]
+
+        # Sample noise
+        eps = torch.randn_like(input)  # [B, T, F]
+
+        # Compute mean and std for the SDE
+        # ? Do shapes make sense?
+        mean_t = self.mean_fn(input, times)  # [B, T, F]
+        std_t = self.std_fn(times)  # [B, 1, 1] or [B, 1] or [B]
+        while std_t.dim() < input.dim():
+            std_t = std_t.unsqueeze(-1)
+        std_t = std_t.expand_as(input)  # [B, T, F]
+
+        # Get noised input
+        input_noised = mean_t + std_t * eps  # [B, T, F]
+
+        # True score
+        score_target = -eps / std_t
+
+        # Apply condition mask: where condition_mask is True, use input (observed)
+        # If condition_mask is None, generate one with Bernoulli(p=0.33)
+        if condition_mask is None:
+            condition_mask = torch.bernoulli(torch.full((B, T), 0.33, device=device))
+        condition_mask = condition_mask.bool()
+        input_noised = torch.where(condition_mask.unsqueeze(-1), input, input_noised)
+
+        # If edge_mask is None, generate one of all ones [T, T]
+        if edge_mask is None:
+            edge_mask = torch.ones(T, T, device=device)
+
+        # Model prediction
+        score_pred = self.forward(
+            input_noised, times.squeeze(-1), condition_mask, edge_mask
+        )  # [B, T, F]
+
+        # Weight and sum over T and F
+        weights = self.weight_fn(times)
+
+        # Compute MSE loss, mask out observed entries
+        # sum tensor of shape [B, T, F] over F
+        loss = torch.sum((score_pred - score_target) ** 2.0, dim=-1)  # [B, T]
+        loss = torch.where(condition_mask, torch.zeros_like(loss), loss)
+
+        # For times -> 0 this loss has high variance; a standard method to reduce the
+        # variance is to use a control variate, i.e., a term that has zero expectation
+        # but is strongly correlated with our objective.
+        # Such a term can be derived by performing a 0th order Taylor expansion of the
+        # score network around the mean
+        # (see https://arxiv.org/pdf/2101.03288 for details).
+        # NOTE: As it is a Taylor expansion, it will only work well for small std.
+        # TODO control_variate
+
+        return weights * loss
+
+    def approx_marginal_mean(self, times: Tensor) -> Tensor:
+        r"""Approximate the marginal mean of the target distribution at a given time.
+
+        Args:
+            times: SDE time variable in [0,1].
+
+        Returns:
+            Approximate marginal mean at a given time.
+        """
+        # Handle case when times has 3 dimensions during sampling
+        original_shape = times.shape
+        has_sample_dim = len(original_shape) == 3
+
+        if has_sample_dim:
+            # Flatten the first two dimensions for computing the mean
+            times = times.reshape(-1)
+            mean = self.mean_t_fn(times) * self.mean_0
+            # Reshape back to original shape
+            mean = mean.reshape(*original_shape[:-1], *mean.shape[1:])
+            return mean
+        else:
+            return self.mean_t_fn(times) * self.mean_0
+
+    def approx_marginal_std(self, times: Tensor) -> Tensor:
+        r"""Approximate the marginal standard deviation of the target distribution at a
+        given time.
+
+        Args:
+            times: SDE time variable in [0,1].
+
+        Returns:
+            Approximate marginal standard deviation at a given time.
+        """
+        # Handle case when times has 3 dimensions during sampling
+        original_shape = times.shape
+        has_sample_dim = len(original_shape) == 3
+
+        if has_sample_dim:
+            # Flatten the first two dimensions for computing the std
+            times = times.reshape(-1)
+            vars = self.mean_t_fn(times) ** 2 * self.std_0**2 + self.std_fn(times) ** 2
+            std = torch.sqrt(vars)
+            # Reshape back to original shape
+            std = std.reshape(*original_shape[:-1], *std.shape[1:])
+            return std
+        else:
+            vars = self.mean_t_fn(times) ** 2 * self.std_0**2 + self.std_fn(times) ** 2
+            return torch.sqrt(vars)
+
+    def mean_t_fn(self, times: Tensor) -> Tensor:
+        r"""Conditional mean function, E[xt|x0], specifying the "mean factor" at a given
+        time, which is always multiplied by x0 to get the mean of the noise distribution
+        , i.e., p(xt|x0) = N(xt; mean_t(t)*x0, std_t(t)).
+
+        Args:
+            times: SDE time variable in [0,1].
+
+        Raises:
+            NotImplementedError: This method is implemented in each individual SDE
+            classes.
+        """
+        raise NotImplementedError
+
+    def mean_fn(self, x0: Tensor, times: Tensor) -> Tensor:
+        r"""Mean function of the SDE, which just multiplies the specific "mean factor"
+        by the original input x0, to get the mean of the noise distribution, i.e.,
+        p(xt|x0) = N(xt; mean_t(t)*x0, std_t(t)).
+
+        Args:
+            x0: Initial input data.
+            times: SDE time variable in [0,1].
+
+        Returns:
+            Mean of the noise distribution at a given time.
+        """
+        return self.mean_t_fn(times) * x0
+
+    def std_fn(self, times: Tensor) -> Tensor:
+        r"""Standard deviation function of the noise distribution at a given time,
+
+        i.e., p(xt|x0) = N(xt; mean_t(t)*x0, std_t(t)).
+
+        Args:
+            times: SDE time variable in [0,1].
+
+        Raises:
+            NotImplementedError: This method is implemented in each individual SDE
+            classes.
+        """
+        raise NotImplementedError
+
+    def drift_fn(self, input: Tensor, times: Tensor) -> Tensor:
+        r"""Drift function, f(x,t), of the SDE described by dx = f(x,t)dt + g(x,t)dW.
+
+        Args:
+            input: Original data, x0.
+            times: SDE time variable in [0,1].
+
+        Raises:
+            NotImplementedError: This method is implemented in each individual SDE
+            classes.
+        """
+        raise NotImplementedError
+
+    def diffusion_fn(self, input: Tensor, times: Tensor) -> Tensor:
+        r"""Diffusion function, g(x,t), of the SDE described by
+                              dx = f(x,t)dt + g(x,t)dW.
+
+        Args:
+            input: Original data, x0.
+            times: SDE time variable in [0,1].
+
+        Raises:
+            NotImplementedError: This method is implemented in each individual SDE
+            classes.
+        """
+        raise NotImplementedError
+
+    def _set_weight_fn(self, weight_fn: Union[str, Callable]):
+        r"""Set the weight function.
+
+        Args:
+            weight_fn: Function to compute the weights over time. Can be one of the
+            following:
+                - "identity": constant weights (1.),
+                - "max_likelihood": weights proportional to the diffusion function, or
+                - a custom function that returns a Callable.
+        """
+        if weight_fn == "identity":
+            self.weight_fn = lambda times: 1
+        elif weight_fn == "max_likelihood":
+            self.weight_fn = (
+                lambda times: self.diffusion_fn(
+                    torch.ones((1,), device=times.device), times
+                )
+                ** 2
+            )
+        elif weight_fn == "variance":
+            self.weight_fn = lambda times: self.std_fn(times) ** 2
+        elif callable(weight_fn):
+            self.weight_fn = weight_fn
+        else:
+            raise ValueError(f"Weight function {weight_fn} not recognized.")
+
+    def ode_fn(self, input: Tensor, times: Tensor) -> Tensor:
+        r"""ODE flow function of the score estimator.
+
+        For reference, see Equation 13 in [1]_.
+
+        Args:
+            input: variable whose distribution is estimated.
+            t: Time.
+
+        Returns:
+            ODE flow function value at a given time.
+        """
+        score = self.score(input=input, time=times)
+        f = self.drift_fn(input, times)
+        g = self.diffusion_fn(input, times)
+        v = f - 0.5 * g**2 * score
+        return v
 
 
 class ConditionalScoreEstimator(ConditionalVectorFieldEstimator):
