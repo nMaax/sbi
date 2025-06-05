@@ -412,10 +412,59 @@ def _test_simformer():
 
     print("Simformer output shape assertion passed!")
 
+def _test_masked_ve_score_estimator():
+    print("\n--- Testing MaskedVEScoreEstimator ---")
 
+    # Dummy parameters
+    in_features = 4
+    num_nodes = 8
+    input_shape = torch.Size([num_nodes, in_features])
+
+    # Create a dummy MaskedVectorFieldNet (Simformer)
+    net = Simformer(
+        in_features=in_features,
+        num_nodes=num_nodes,
+    )
+
+    # Instantiate MaskedVEScoreEstimator
+    estimator = MaskedVEScoreEstimator(
+        net=net,
+        input_shape=input_shape,
+        sigma_min=1e-3,
+        sigma_max=1.0,
+    )
+    print(f"MaskedVEScoreEstimator initialized: {estimator}")
+
+    # Dummy input
+    batch_size = 2
+    x = torch.randn(batch_size, num_nodes, in_features)
+    t = torch.rand(batch_size)
+
+    # Test mean_t_fn
+    mean = estimator.mean_t_fn(t)
+    print(f"mean_t_fn output shape: {mean.shape}")
+
+    # Test std_fn
+    std = estimator.std_fn(t)
+    print(f"std_fn output shape: {std.shape}")
+
+    # Test drift_fn
+    drift = estimator.drift_fn(x, t)
+    print(f"drift_fn output: {drift}")
+
+    # Test diffusion_fn
+    diffusion = estimator.diffusion_fn(x, t)
+    print(f"diffusion_fn output shape: {diffusion.shape}")
+
+    # Check shapes
+    assert mean.shape[0] == t.shape[0], "mean_t_fn output batch size mismatch"
+    assert std.shape[0] == t.shape[0], "std_fn output batch size mismatch"
+    assert diffusion.shape[0] == t.shape[0], "diffusion_fn output batch size mismatch"
+    print("MaskedVEScoreEstimator tests passed!")
 
 # Run the test when this file is executed directly
 if __name__ == "__main__":
     _test_time_embedding()
     _test_masked_dit_block()
     _test_simformer()
+    _test_masked_ve_score_estimator()
