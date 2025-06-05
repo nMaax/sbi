@@ -1,150 +1,140 @@
-from typing import Callable, Optional
+from typing import Callable, Optional, Union
+import math
+from typing import Callable, Union
+
 import torch
 from torch import Tensor, nn
 
-from sbi.utils.vector_field_utils import MaskedVectorFieldNet
-from sbi.neural_nets.estimators.score_estimator import ConditionalScoreEstimator
+from sbi.neural_nets.estimators.score_estimator import MaskedConditionalScoreEstimator
+from sbi.neural_nets.vector_field_net import MaskedVectorFieldNet
+from sbi.neural_nets.di_t_block import DiTBlock
+from sbi.neural_nets.random_fourier_time_embedding import RandomFourierTimeEmbedding
 
-from sbi.neural_nets.net_builders.vector_field_nets import RandomFourierTimeEmbedding
-from sbi.neural_nets.net_builders.vector_field_nets import DiTBlock
 
-class MaskedConditionalScoreEstimator(ConditionalScoreEstimator):
-    #! Extend from Conditional, and override
-    # class MyConditionalScoreEstimator(ConditionalScoreEstimator):
-    #     def __init__(self, ...):
-    #         ...
-    #
-    #     def forward(self, ..., -cond, +masks):
-    #         # 3D Tensors, not 2D, as input to the net
-    #
-    #     def loss(self, ...):
-    #         # 3D Tensors, not 2D, as input to the net
-
-    #! Note:
-    #!  NO   --> input = ALL THE NODES, condition is a subset of them (those observed)
-    #!  THIS --> input = latent NODEs,  condition is observed;
-    #!           i.e., inputs union condition = ALL NODES,
-    #!                 but input intersect condition = void
-
-    def forward(
+class MaskedVEScoreEstimator(MaskedConditionalScoreEstimator):
+    def __init__(
         self,
-        input: Tensor,                              # [B, T, F]
-        time: Tensor,                               # [B] or [B, 1]
-        condition_mask: Optional[Tensor] = None,    # [B, T]
-        edge_mask: Optional[Tensor] = None          # [T, T] or [B, T, T]
-    ) -> Tensor:
-        """
-        Forward pass of the score estimator for Simformer.
+        net: Union[MaskedVectorFieldNet, nn.Module],
+        input_shape: torch.Size,
+        embedding_net: nn.Module = nn.Identity(),
+        weight_fn: Union[str, Callable] = "max_likelihood",
+        sigma_min: float = 1e-4,
+        sigma_max: float = 10.0,
+        mean_0: float = 0.0,
+        std_0: float = 1.0,
+    ) -> None:
+        self.sigma_min = sigma_min
+        self.sigma_max = sigma_max
+        super().__init__(
+            net,
+            input_shape,
+            embedding_net=embedding_net,
+            weight_fn=weight_fn,
+            mean_0=mean_0,
+            std_0=std_0,
+        )
+
+    def mean_t_fn(self, times: Tensor) -> Tensor:
+        """Conditional mean function for variance exploding SDEs, which is always 1.
+
         Args:
-            input: [B, T, F] - all nodes (latent and observed).
-            time: [B] or [B, 1] - diffusion times.
-            condition_mask: [B, T] - True for observed/conditioned nodes.
-            edge_mask: [T, T] or [B, T, T] - attention mask for the transformer.
+            times: SDE time variable in [0,1].
+
         Returns:
-            Score (gradient of the density) at a given time, shape [B, T, F].
+            Conditional mean at a given time.
         """
-        device = input.device
-        B, T, F = input.shape
+        # Handle case when times has 3 dimensions during sampling
+        original_shape = times.shape
+        has_sample_dim = len(original_shape) == 3
 
-        # Ensure time shape is [B, 1]
-        if time.dim() == 1:
-            time = time.view(B, 1)
+        #! Is this what I need to do in my setting?
+        if has_sample_dim:
+            # Create ones tensor
+            phi = torch.ones_like(times.reshape(-1), device=times.device)
+            # Add necessary dimensions
+            for _ in range(len(self.input_shape)):
+                phi = phi.unsqueeze(-1)
+            # Reshape back to original
+            phi = phi.reshape(*original_shape[:-1], *phi.shape[1:])
+            return phi
+        else:
+            phi = torch.ones_like(times, device=times.device)
+            for _ in range(len(self.input_shape)):
+                phi = phi.unsqueeze(-1)
+            return phi
 
-        # Compute time-dependent mean and std for z-scoring
-        mean = self.approx_marginal_mean(time)      # [B, 1, F] or broadcastable
-        std = self.approx_marginal_std(time)        # [B, 1, F] or broadcastable
+    def std_fn(self, times: Tensor) -> Tensor:
+        """Standard deviation function for variance exploding SDEs.
 
-        #! Skipped, as Simformer expects time as it is, not as a level of std
-        # time_enc = self.std_fn(time)
-
-        # Z-score the input
-        input_enc = (input - mean) / std
-
-        # "Skip connection" Gaussian score
-        score_gaussian = (input - mean) / (std ** 2)
-
-        # Model prediction (no flattening, pass masks)
-        score_pred = self.net(input_enc, time.squeeze(-1), condition_mask, edge_mask)  # [B, T, F]
-
-        # Output pre-conditioned score (same scaling as in reference)
-        scale = self.mean_t_fn(time) / self.std_fn(time)
-        # Ensure scale is broadcastable to [B, T, F]
-        while scale.dim() < input.dim():
-            scale = scale.unsqueeze(-1)
-        output_score = -scale * score_pred - score_gaussian
-
-        return output_score
-
-    def score(
-        self,
-        input: Tensor,                            # [B, T, F]
-        time: Tensor,                             # [B] or [B, 1]
-        condition_mask: Optional[Tensor] = None,  # [B, T]
-        edge_mask: Optional[Tensor] = None        # [T, T] or [B, T, T]
-    ) -> Tensor:
-        return self(input=input, time=time, condition_mask=condition_mask, edge_mask=edge_mask)
-
-    def loss(
-        self,
-        input: Tensor,
-        times: Optional[Tensor] = None, #! Where do I generate it? In the training loop!
-        condition_mask: Optional[Tensor] = None, #! Where do I generate it? In the training loop!
-        edge_mask: Optional[Tensor] = None, #! Where do I generate it? In the training loop!
-        control_variate=True,
-        control_variate_threshold=0.3,
-    ) -> Tensor:
-        """
-        Denoising score matching loss for Simformer.
         Args:
-            input: [B, T, F] - all nodes (latent and observed).
-            times: [B, 1] or [B] - diffusion times. If None, sampled uniformly.
-            condition_mask: [B, T] - True for observed/conditioned nodes.
-            edge_mask: [T, T] or [B, T, T] - attention mask for the transformer.
-            weight_fn: Callable for weighting the loss over time (optional).
-            rebalance_loss: Whether to rebalance loss by number of unmasked elements.
+            times: SDE time variable in [0,1].
+
         Returns:
-            Scalar loss.
+            Standard deviation at a given time.
         """
-        device = input.device
-        B, T, F = input.shape
+        # Handle case when times has 3 dimensions during sampling
+        original_shape = times.shape
+        has_sample_dim = len(original_shape) == 3
 
-        # Sample times if not provided
-        if times is None:
-            times = torch.rand(B, 1, device=device) * (self.t_max - self.t_min) + self.t_min  # [B, 1]
-        times = times.view(B, 1) # Ensure shape [B, 1]
+        #! Is this what I need to do in my setting?
+        if has_sample_dim:
+            # Flatten for computation
+            times_flat = times.reshape(-1)
+            std = self.sigma_min * (self.sigma_max / self.sigma_min) ** times_flat
+            # Add necessary dimensions
+            for _ in range(len(self.input_shape)):
+                std = std.unsqueeze(-1)
+            # Reshape back to original
+            std = std.reshape(*original_shape[:-1], *std.shape[1:])
+            return std
+        else:
+            std = self.sigma_min * (self.sigma_max / self.sigma_min) ** times
+            for _ in range(len(self.input_shape)):
+                std = std.unsqueeze(-1)
+            return std
 
-        # Sample noise
-        eps = torch.randn_like(input)  # [B, T, F]
+    def _sigma_schedule(self, times: Tensor) -> Tensor:
+        """Geometric sigma schedule for variance exploding SDEs.
 
-        # Compute mean and std for the SDE
-        mean_t = self.mean_fn(input, times)  # [B, T, F]
-        std_t = self.std_fn(times)           # [B, 1, 1] or [B, 1] or [B]
-        while std_t.dim() < input.dim():
-            std_t = std_t.unsqueeze(-1)
-        std_t = std_t.expand_as(input)       # [B, T, F]
+        Args:
+            times: SDE time variable in [0,1].
 
-        # Get noised input
-        input_noised = mean_t + std_t * eps  # [B, T, F]
+        Returns:
+            Sigma schedule at a given time.
+        """
+        return self.sigma_min * (self.sigma_max / self.sigma_min) ** times
 
-        # True score
-        score_target = -eps / std_t
+    def drift_fn(self, input: Tensor, times: Tensor) -> Tensor:
+        """Drift function for variance exploding SDEs.
 
-        # Apply condition mask: where condition_mask is True, use input (observed)
-        if condition_mask is not None:
-            mask = condition_mask.bool()
-            input_noised = torch.where(mask.unsqueeze(-1), input, input_noised)
+        Args:
+            input: Original data, x0.
+            times: SDE time variable in [0,1].
 
-        # Model prediction
-        score_pred = self.forward(input_noised, times.squeeze(-1), condition_mask, edge_mask)  # [B, T, F]
+        Returns:
+            Drift function at a given time.
+        """
+        return torch.tensor([0.0])
 
-        # Compute MSE loss, mask out observed entries
-        loss = torch.sum((score_pred - score_target) ** 2.0, dim=-1)  # [B, T] (sum tensor of shape [B, T, F] over F)
-        if condition_mask is not None:
-            loss = torch.where(mask, torch.zeros_like(loss), loss)
+    def diffusion_fn(self, input: Tensor, times: Tensor) -> Tensor:
+        """Diffusion function for variance exploding SDEs.
 
-        # Weight and sum over T and F
-        weights = self.weight_fn(times)
+        Args:
+            input: Original data, x0.
+            times: SDE time variable in [0,1].
 
+        Returns:
+            Diffusion function at a given time.
+        """
+        g = self._sigma_schedule(times) * math.sqrt(
+            (2 * math.log(self.sigma_max / self.sigma_min))
+        )
+
+        #! Is this what I need to do in my setting?
+        while len(g.shape) < len(input.shape):
+            g = g.unsqueeze(-1)
+
+        return g
 
 class MaskedDiTBlock(DiTBlock):
     def __init__(
