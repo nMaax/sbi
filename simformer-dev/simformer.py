@@ -456,10 +456,15 @@ def _test_masked_ve_score_estimator():
     diffusion = estimator.diffusion_fn(x, t)
     print(f"diffusion_fn output shape: {diffusion.shape}")
 
+    # Test forward method
+    output = estimator(x, t)
+    print(f"Estimator forward output shape: {output.shape}")
+
     # Check shapes
     assert mean.shape[0] == t.shape[0], "mean_t_fn output batch size mismatch"
     assert std.shape[0] == t.shape[0], "std_fn output batch size mismatch"
     assert diffusion.shape[0] == t.shape[0], "diffusion_fn output batch size mismatch"
+    assert output.shape == x.shape, f"Expected output shape {x.shape}, got {output.shape}"
     print("MaskedVEScoreEstimator tests passed!")
 
 # Run the test when this file is executed directly
