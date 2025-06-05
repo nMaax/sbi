@@ -8,6 +8,55 @@ import torch
 from torch import Tensor, nn
 
 
+class MaskedConditionalEstimator(nn.Module, ABC):
+    r""" """
+
+    def __init__(self, input_shape: Tuple) -> None:
+        r""" """
+        super().__init__()
+        self._input_shape = torch.Size(input_shape)
+
+    @property
+    def input_shape(self) -> torch.Size:
+        r"""Return the input shape."""
+        return self._input_shape
+
+    @abstractmethod
+    def loss(self, input: Tensor, condition: Tensor, **kwargs) -> Tensor:
+        r""" """
+        pass
+
+    def _check_input_shape(self, input: Tensor):
+        r"""This method checks whether the input has the correct shape.
+
+        Args:
+            input: Inputs to evaluate the log probability on of shape
+                    `(sample_dim_input, batch_dim_input, *event_shape_input)`.
+
+        Raises:
+            ValueError: If the input has a dimensionality that does not match
+                        the expected input dimensionality.
+            ValueError: If the shape of the input does not match the expected
+                        input dimensionality.
+        """
+        input_shape = input.shape
+        exp_input_shape = self.input_shape
+        if len(input_shape) < len(exp_input_shape):
+            raise ValueError(
+                "Dimensionality of input is too small and does not match the "
+                f"expected dimensionality {len(exp_input_shape)}. It should "
+                f"be compatible with the provided input_shape {exp_input_shape}."
+            )
+        else:
+            input_shape = input.shape[-len(self.input_shape) :]
+            if input_shape != exp_input_shape:
+                raise ValueError(
+                    f"Shape of input {input_shape} does not match the "
+                    f"expected input dimensionality {exp_input_shape}, as "
+                    "provided by input_shape. Please reshape it accordingly."
+                )
+
+
 class ConditionalEstimator(nn.Module, ABC):
     r"""Base class for conditional estimators that estimate properties of
     distributions conditional on an input.
