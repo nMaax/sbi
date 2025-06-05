@@ -15,22 +15,7 @@ from sbi.utils.vector_field_utils import MaskedVectorFieldNet, VectorFieldNet
 
 
 class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
-    #! Extend from Conditional, and override
-    # class MyConditionalScoreEstimator(ConditionalScoreEstimator):
-    #     def __init__(self, ...):
-    #         ...
-    #
-    #     def forward(self, ..., -cond, +masks):
-    #         # 3D Tensors, not 2D, as input to the net
-    #
-    #     def loss(self, ...):
-    #         # 3D Tensors, not 2D, as input to the net
-
-    #! Note:
-    #!  NO   --> input = ALL THE NODES, condition is a subset of them (those observed)
-    #!  THIS --> input = latent NODEs,  condition is observed;
-    #!           i.e., inputs union condition = ALL NODES,
-    #!                 but input intersect condition = void
+    r""" """
 
     # Whether the score is defined for this estimator.
     # Required for gradient-based methods.
@@ -156,7 +141,9 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         # Output pre-conditioned score (same scaling as in reference)
         scale = self.mean_t_fn(time) / self.std_fn(time)
 
-        # ? Ensure scale is broadcastable to [B, T, F]
+        #! Pay attention to the shape, it should be [B, T, F]
+        #! or below ([B, T], [B,])
+        # Ensure scale is broadcastable to [B, T, F]
         while scale.dim() < input.dim():
             scale = scale.unsqueeze(-1)
 
@@ -239,6 +226,8 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         # Compute mean and std for the SDE
         # ? Do shapes make sense?
         mean_t = self.mean_fn(input, times)  # [B, T, F]
+        #! Pay attention to the shape, it should be [B, T, F]
+        #! or below ([B, T], [B,])
         std_t = self.std_fn(times)  # [B, 1, 1] or [B, 1] or [B]
         while std_t.dim() < input.dim():
             std_t = std_t.unsqueeze(-1)
@@ -255,6 +244,7 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         if condition_mask is None:
             condition_mask = torch.bernoulli(torch.full((B, T), 0.33, device=device))
         condition_mask = condition_mask.bool()
+        #! Pay attention to the shape of condition_mask, it should be [B, T]
         input_noised = torch.where(condition_mask.unsqueeze(-1), input, input_noised)
 
         # If edge_mask is None, generate one of all ones [T, T]
@@ -563,6 +553,11 @@ class ConditionalScoreEstimator(ConditionalVectorFieldEstimator):
         """Return the embedding network."""
         return self._embedding_net
 
+    #! Note:
+    #!  NO   --> input = ALL THE NODES, condition is a subset of them (those observed)
+    #!  YES  --> input = latent NODEs,  condition is observed;
+    #!           i.e., inputs union condition = ALL NODES,
+    #!                 but input intersect condition = void
     def forward(self, input: Tensor, condition: Tensor, time: Tensor) -> Tensor:
         r"""Forward pass of the score estimator
         network to compute the conditional score
