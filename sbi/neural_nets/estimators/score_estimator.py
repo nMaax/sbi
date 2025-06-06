@@ -33,7 +33,11 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         input_shape: torch.Size,
         embedding_net: nn.Module = nn.Identity(),
         weight_fn: Union[str, Callable] = "max_likelihood",
+        # ? Should I rather break the convention and ask always
+        # ? for the means and stds of data?
         mean_0: Union[Tensor, float] = 0.0,
+        # ? Should I rather break the convention and ask always
+        # ? for the means and stds of data?
         std_0: Union[Tensor, float] = 1.0,
         t_min: float = 1e-3,
         t_max: float = 1.0,
@@ -68,10 +72,41 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
 
         # Starting mean and std of the target distribution (otherwise assumes 0,1).
         # This will be used to precondition the score network to improve training.
+        #! If mean_0 or std_0 is a float: It's internally converted to a
+        #! [1, Nodes, Features] tensor
+        #! filled with that float's value. This ensures element-wise
+        #! normalization, even with global defaults.
+        #!
+        #! If mean_0 or std_0 is a torch.Tensor: It's used exactly as
+        #! provided by the user.
+        #!
+        #! Due to this, the output shape of approx_marginal_mean and
+        #! approx_marginal_std will vary:
+        #!   If self.mean_0 and self.std_0 are [1, Nodes, Features]
+        #! (from float input or
+        #!   a correctly shaped tensor input): the output will be
+        #! [Batch, Nodes, Features].
+        #!
+        #!   If self.mean_0 and self.std_0 are [1] (from a scalar
+        #!  torch.Tensor input): the
+        #!   output will be [Batch, 1, 1]
+        #!
+        #! And then, what about cases in which the user provides [F], [T],
+        #!  and various? We do nothing!
+        #! We cannot forsee every case, the user will take care to pass
+        #!  the right mean_0 and std_0
+        # ? Should I not break the convention and ask always for the means
+        # ? and stds of data?
         if not isinstance(mean_0, Tensor):
-            mean_0 = torch.tensor([mean_0])
+            # mean_0 = torch.tensor([mean_0])
+            mean_0_tensor = torch.full(input_shape, float(mean_0))
+            mean_0_tensor = mean_0_tensor.unsqueeze(0)  # Shape becomes [1, T, F]
+            mean_0 = mean_0_tensor
         if not isinstance(std_0, Tensor):
-            std_0 = torch.tensor([std_0])
+            # std_0 = torch.tensor([std_0])
+            std_0_tensor = torch.full(input_shape, float(std_0))
+            std_0_tensor = std_0_tensor.unsqueeze(0)
+            std_0 = std_0_tensor
 
         self.register_buffer("mean_0", mean_0.clone().detach())
         self.register_buffer("std_0", std_0.clone().detach())
@@ -96,8 +131,8 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         self,
         input: Tensor,  # [B, T, F]
         time: Tensor,  # [B] or [B, 1]
-        condition_mask: Optional[Tensor] = None,  # [B, T]
-        edge_mask: Optional[Tensor] = None,  # [T, T] or [B, T, T]
+        condition_mask,  # [B, T]
+        edge_mask,  # [T, T] or [B, T, T]
     ) -> Tensor:
         r"""Forward pass of the score estimator
         network to compute the conditional score
@@ -117,8 +152,8 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         B, T, F = input.shape
 
         # Ensure time shape is [B, 1]
-        if time.dim() == 1:
-            time = time.view(B, 1)
+        # if time.dim() == 1:
+        #    time = time.view(B, 1)
 
         # Compute time-dependent mean and std for z-scoring
         mean = self.approx_marginal_mean(time)  # [B, 1, F] or broadcastable
