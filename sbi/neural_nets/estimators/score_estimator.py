@@ -258,7 +258,7 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         eps = torch.randn_like(input)  # [B, T, F]
 
         # Compute mean and std for the SDE
-        # ? Do shapes make sense?
+        #! Do shapes make sense?
         mean_t = self.mean_fn(input, times)  # [B, T, F]
         #! Pay attention to the shape, it should be [B, T, F]
         #! or below ([B, T], [B,])
@@ -278,7 +278,7 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         if condition_mask is None:
             condition_mask = torch.bernoulli(torch.full((B, T), 0.33, device=device))
         condition_mask = condition_mask.bool()
-        #! Pay attention to the shape of condition_mask, it should be [B, T]
+        # Shape of condition_mask is [B, T], I unsqueeze for broadcasting on F
         input_noised = torch.where(condition_mask.unsqueeze(-1), input, input_noised)
 
         # If edge_mask is None, generate one of all ones [T, T]
@@ -298,7 +298,7 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         loss = (score_pred - score_target) ** 2.0
         loss = torch.where(condition_mask.unsqueeze(-1), torch.zeros_like(loss), loss)
 
-        #! in JAX he prefers doing sum on T (dim=-2), why?
+        #! In JAX he prefers doing sum on T (dim=-2), why?
         loss = torch.sum(loss, dim=-1, keepdim=True)  # [B, T, 1]
         #! Since sbi expects loss-per-batch, I sum on both T and F
         loss = torch.sum(loss, dim=-1, keepdim=True)  # [B, 1, 1]

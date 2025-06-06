@@ -475,7 +475,7 @@ def _test_masked_ve_score_estimator():
     output = estimator(x, t, condition_mask, edge_mask)
     print(f"Estimator forward output shape: {output.shape}")
 
-    # todo Test loss method
+    # Test loss method
     loss = estimator.loss(x)
     print(f"Estimator loss output shape: {loss.shape}")
 
