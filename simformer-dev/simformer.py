@@ -114,7 +114,7 @@ class MaskedVEScoreEstimator(MaskedConditionalScoreEstimator):
         Returns:
             Drift function at a given time.
         """
-        return torch.tensor([0.0])
+        return torch.zeros_like(input)
 
     def diffusion_fn(self, input: Tensor, times: Tensor) -> Tensor:
         """Diffusion function for variance exploding SDEs.
@@ -416,8 +416,9 @@ def _test_masked_ve_score_estimator():
     print("\n--- Testing MaskedVEScoreEstimator ---")
 
     # Dummy parameters
-    in_features = 4
+    batch_size = 2
     num_nodes = 8
+    in_features = 4
     input_shape = torch.Size([num_nodes, in_features])
 
     # Create a dummy MaskedVectorFieldNet (Simformer)
@@ -436,35 +437,58 @@ def _test_masked_ve_score_estimator():
     print(f"MaskedVEScoreEstimator initialized: {estimator}")
 
     # Dummy input
-    batch_size = 2
     x = torch.randn(batch_size, num_nodes, in_features)
     t = torch.rand(batch_size)
 
     # Test mean_t_fn
-    mean = estimator.mean_t_fn(t)
-    print(f"mean_t_fn output shape: {mean.shape}")
+    mean_t = estimator.mean_t_fn(t)
+    print(f"mean_t_fn output shape: {mean_t.shape}")
 
     # Test std_fn
     std = estimator.std_fn(t)
     print(f"std_fn output shape: {std.shape}")
 
+    # Test mean_fn
+    mean = estimator.mean_fn(x, t)
+    print(f"mean_fn output shape: {mean.shape}")
+
     # Test drift_fn
     drift = estimator.drift_fn(x, t)
-    print(f"drift_fn output: {drift}")
+    print(f"drift_fn output shape: {drift.shape}")
 
     # Test diffusion_fn
     diffusion = estimator.diffusion_fn(x, t)
     print(f"diffusion_fn output shape: {diffusion.shape}")
 
+
+    # Test approx_marginal_mean
+    approx_mean = estimator.approx_marginal_mean(t)
+    print(f"approx_marginal_mean output shape: {approx_mean.shape}")
+
+    # Test approx_marginal_std
+    approx_std = estimator.approx_marginal_std(t)
+    print(f"approx_marginal_std output shape: {approx_std.shape}")
+
     # Test forward method
-    output = estimator(x, t)
+    edge_mask = torch.ones(num_nodes, num_nodes)
+    condition_mask = torch.bernoulli(torch.full((batch_size, num_nodes), 0.33))
+    output = estimator(x, t, condition_mask, edge_mask)
     print(f"Estimator forward output shape: {output.shape}")
 
+    # todo Test loss method
+    #loss = estimator.loss(x, t)
+    #print(f"Estimator loss output shape: {loss.shape}")
+
     # Check shapes
-    assert mean.shape[0] == t.shape[0], "mean_t_fn output batch size mismatch"
-    assert std.shape[0] == t.shape[0], "std_fn output batch size mismatch"
-    assert diffusion.shape[0] == t.shape[0], "diffusion_fn output batch size mismatch"
+    broadcasted_t_shape = torch.Size([batch_size, 1, 1])
+    assert mean_t.shape == broadcasted_t_shape, "mean_t output size mismatch"
+    assert mean.shape == x.shape, "mean_fn output size mismatch"
+    assert std.shape == broadcasted_t_shape, "std_fn output size mismatch"
+    assert drift.shape == x.shape, "drift output shape mismatch"
+    assert diffusion.shape == broadcasted_t_shape, "diffusion_fn output batch size mismatch"
     assert output.shape == x.shape, f"Expected output shape {x.shape}, got {output.shape}"
+    assert approx_mean.shape == x.shape, "approx_marginal_mean output batch size mismatch"
+    assert approx_std.shape == x.shape, "approx_marginal_std output batch size mismatch"
     print("MaskedVEScoreEstimator tests passed!")
 
 # Run the test when this file is executed directly
