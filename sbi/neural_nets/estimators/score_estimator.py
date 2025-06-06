@@ -250,10 +250,9 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
 
         # Sample times if not provided
         if times is None:
-            times = torch.rand(B, 1, device=device)
+            times = torch.rand(B, device=device)
             times = times * (self.t_max - self.t_min)
-            times = times + self.t_min  # [B, 1]
-        times = times.view(B, 1)  # Ensure shape [B, 1]
+            times = times + self.t_min  # [B,]
 
         # Sample noise
         eps = torch.randn_like(input)  # [B, T, F]
@@ -296,8 +295,13 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
 
         # Compute MSE loss, mask out observed entries
         # sum tensor of shape [B, T, F] over F
-        loss = torch.sum((score_pred - score_target) ** 2.0, dim=-1)  # [B, T]
-        loss = torch.where(condition_mask, torch.zeros_like(loss), loss)
+        loss = (score_pred - score_target) ** 2.0
+        loss = torch.where(condition_mask.unsqueeze(-1), torch.zeros_like(loss), loss)
+
+        #! in JAX he prefers doing sum on T (dim=-2), why?
+        loss = torch.sum(loss, dim=-1, keepdim=True)  # [B, T, 1]
+        #! Since sbi expects loss-per-batch, I sum on both T and F
+        loss = torch.sum(loss, dim=-1, keepdim=True)  # [B, 1, 1]
 
         # For times -> 0 this loss has high variance; a standard method to reduce the
         # variance is to use a control variate, i.e., a term that has zero expectation
@@ -306,8 +310,9 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         # score network around the mean
         # (see https://arxiv.org/pdf/2101.03288 for details).
         # NOTE: As it is a Taylor expansion, it will only work well for small std.
-        # TODO control_variate
+        # TODO control_variate // rebalance loss in JAX
 
+        #! In JAX he also multiplies by weights before doing the rebalance, why?
         return weights * loss
 
     def approx_marginal_mean(self, times: Tensor) -> Tensor:

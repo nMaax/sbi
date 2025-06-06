@@ -476,8 +476,8 @@ def _test_masked_ve_score_estimator():
     print(f"Estimator forward output shape: {output.shape}")
 
     # todo Test loss method
-    #loss = estimator.loss(x, t)
-    #print(f"Estimator loss output shape: {loss.shape}")
+    loss = estimator.loss(x)
+    print(f"Estimator loss output shape: {loss.shape}")
 
     # Check shapes
     broadcasted_t_shape = torch.Size([batch_size, 1, 1])
