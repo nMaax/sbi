@@ -208,16 +208,6 @@ class Simformer(MaskedVectorFieldNet):
         self.num_blocks = num_blocks # Number of transformer blocks to stack
         self.num_heads = num_heads # Number of attention heads per each transfrormer block
 
-        assert in_features > 0, "in_features must be greater than 0"
-        assert num_nodes > 0, "num_nodes must be greater than 0"
-        assert dim_val > 0, "dim_val must be greater than 0"
-        assert dim_id > 0, "dim_id must be greater than 0"
-        assert dim_cond > 0, "dim_cond must be greater than 0"
-        assert dim_t > 0, "dim_t must be greater than 0"
-        assert dim_hidden > 0, "dim_hidden must be greater than 0"
-        assert num_blocks > 0, "num_blocks must be greater than 0"
-        assert num_heads > 0, "num_heads must be greater than 0"
-
         # Tokenize on val
         #? Should this be a repeat rather than Linear?
         self.val_linear = nn.Linear(in_features, dim_val)
