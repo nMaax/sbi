@@ -2,12 +2,11 @@
 import numpy as np
 
 import torch
-from torch import nn
 from torch.optim import AdamW
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import Dataset, DataLoader
 
 from simformer import Simformer, MaskedVEScoreEstimator
-from torch.optim.lr_scheduler import CosineAnnealingLR
 
 
 # %%
@@ -15,11 +14,23 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 class LinearGaussian(Dataset):
     def __init__(self, num_features, n):
         self.num_nodes = 3
+
         theta1 = np.random.normal(0, 3, size=(n, num_features))
         x1 = 2 * np.sin(theta1) + np.random.normal(0, 0.5, size=(n, num_features))
         x2 = 0.1 * theta1 ** 2 + 0.5 * np.abs(x1) * np.random.normal(0, 1, size=(n, num_features))
+        self.edge_mask = torch.tensor([
+            [1, 1, 1,],
+            [0, 1, 1,],
+            [0, 0, 1,],
+        ])
+
         data = np.concatenate([theta1, x1, x2], axis=1).reshape(n, -1, num_features)
         self.data = torch.from_numpy(data).float()
+
+        self.mean_0_dataset = self.data.mean(dim=0) # Shape: (num_nodes, num_features)
+        self.std_0_dataset = self.data.std(dim=0)   # Shape: (num_nodes, num_features)
+        self.std_0_dataset[self.std_0_dataset == 0] = 1e-6 # Or a small epsilon like 1e-6
+
 
     def __len__(self):
         return self.data.shape[0]
@@ -50,7 +61,14 @@ net = Simformer(
 )
 
 # Instantiate score estimator
-model = MaskedVEScoreEstimator(net=net, input_shape=torch.Size([in_features, num_nodes]))
+model = MaskedVEScoreEstimator(
+    net=net,
+    input_shape=torch.Size([num_nodes, in_features]),
+    mean_0=train_dataset.mean_0_dataset,
+    std_0=train_dataset.std_0_dataset,
+    sigma_min=1e-3, # Ensure sigma_min is not too small
+    sigma_max=10.0,
+)
 
 # Define optimizer
 optimizer = AdamW(model.parameters(), lr=lr)
@@ -92,6 +110,7 @@ for epoch in range(num_epochs):
         # Remember that the forward() method is within the loss, i.e., you do *not* need to call forward()
         batch_losses = model.loss(
             input=input,
+            edge_mask=edge_mask
         )
 
         # Take the mean of the batch-wise losses to get a single scalar for backprop
@@ -117,7 +136,7 @@ for epoch in range(num_epochs):
 
     # Print stats for loss for the current epoch
     print(f"Epoch [{epoch+1}/{num_epochs}]")
-    print(f"\tTotal train loss: {total_train_loss}")
+    print(f"\tTotal train loss: {total_train_loss:.4e}")
     print(f"\tNumber of train batches: {num_train_batches}")
-    print(f"\tAverage train Loss: {avg_train_loss:.4f}")
+    print(f"\tAverage train Loss: {avg_train_loss:.4e}")
 # %%
