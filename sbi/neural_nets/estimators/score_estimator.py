@@ -33,11 +33,7 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         input_shape: torch.Size,
         embedding_net: nn.Module = nn.Identity(),
         weight_fn: Union[str, Callable] = "max_likelihood",
-        # ? Should I rather break the convention and ask always
-        # ? for the means and stds of data? NO
         mean_0: Union[Tensor, float] = 0.0,
-        # ? Should I rather break the convention and ask always
-        # ? for the means and stds of data? NO
         std_0: Union[Tensor, float] = 1.0,
         t_min: float = 1e-3,
         t_max: float = 1.0,
@@ -70,33 +66,6 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         # Set lambdas (variance weights) function.
         self._set_weight_fn(weight_fn)
 
-        # Starting mean and std of the target distribution (otherwise assumes 0,1).
-        # This will be used to precondition the score network to improve training.
-        #! If mean_0 or std_0 is a float: It's internally converted to a
-        #! [1, Nodes, Features] tensor
-        #! filled with that float's value. This ensures element-wise
-        #! normalization, even with global defaults.
-        #!
-        #! If mean_0 or std_0 is a torch.Tensor: It's used exactly as
-        #! provided by the user.
-        #!
-        #! Due to this, the output shape of approx_marginal_mean and
-        #! approx_marginal_std will vary:
-        #!   If self.mean_0 and self.std_0 are [1, Nodes, Features]
-        #! (from float input or
-        #!   a correctly shaped tensor input): the output will be
-        #! [Batch, Nodes, Features].
-        #!
-        #!   If self.mean_0 and self.std_0 are [1] (from a scalar
-        #!  torch.Tensor input): the
-        #!   output will be [Batch, 1, 1]
-        #!
-        #! And then, what about cases in which the user provides [F], [T],
-        #!  and various? We do nothing!
-        #! We cannot forsee every case, the user will take care to pass
-        #!  the right mean_0 and std_0
-        # ? Should I not break the convention and ask always for the means
-        # ? and stds of data?
         if not isinstance(mean_0, Tensor):
             mean_0 = torch.tensor([mean_0])
         if not isinstance(std_0, Tensor):
@@ -144,10 +113,6 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
             Score (gradient of the density) at a given time, matches input shape.
         """
         B, T, F = input.shape
-
-        # Ensure time shape is [B, 1]
-        # if time.dim() == 1:
-        #    time = time.view(B, 1)
 
         # Compute time-dependent mean and std for z-scoring
         mean = self.approx_marginal_mean(time)  # [B, 1, F] or broadcastable

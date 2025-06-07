@@ -47,7 +47,7 @@ class MaskedVEScoreEstimator(MaskedConditionalScoreEstimator):
         original_shape = times.shape
         has_sample_dim = len(original_shape) == 3
 
-        #! Is this what I need to do in my setting?
+        #? Is this what I need to do in my setting?
         if has_sample_dim:
             # Create ones tensor
             phi = torch.ones_like(times.reshape(-1), device=times.device)
@@ -76,7 +76,7 @@ class MaskedVEScoreEstimator(MaskedConditionalScoreEstimator):
         original_shape = times.shape
         has_sample_dim = len(original_shape) == 3
 
-        #! Is this what I need to do in my setting?
+        #? Is this what I need to do in my setting?
         if has_sample_dim:
             # Flatten for computation
             times_flat = times.reshape(-1)
@@ -130,7 +130,7 @@ class MaskedVEScoreEstimator(MaskedConditionalScoreEstimator):
             (2 * math.log(self.sigma_max / self.sigma_min))
         )
 
-        #! Is this what I need to do in my setting?
+        #? Is this what I need to do in my setting?
         while len(g.shape) < len(input.shape):
             g = g.unsqueeze(-1)
 
@@ -251,7 +251,6 @@ class Simformer(MaskedVectorFieldNet):
         assert edge_mask.shape == (T, T), "edge_mask must have same shape as the sequence length"
 
         # Tokenize on val
-        #? Should this rather be cat[linear(theta), linear(x)]?
         val_h = self.val_linear(inputs) # [B, T, dim_val]
 
         # Tokenize the nodes' id
@@ -277,7 +276,7 @@ class Simformer(MaskedVectorFieldNet):
 
         # Output projection
         #? Should this be flattened as [B, T*F]?
-        #! Answer: No, as you will use your own score estimator
+        #? Answer: No, as you will use your own score estimator
         out = self.out_linear(h)  # [B, T, F]
         return out
 
@@ -404,7 +403,6 @@ def _test_simformer():
 
 
     # Perform forward pass
-
     output = simformer(inputs, t, condition_mask, edge_mask)
     print(f"Simformer forward pass successful. Output shape: {output.shape}")
 
