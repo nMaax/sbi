@@ -34,10 +34,10 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         embedding_net: nn.Module = nn.Identity(),
         weight_fn: Union[str, Callable] = "max_likelihood",
         # ? Should I rather break the convention and ask always
-        # ? for the means and stds of data?
+        # ? for the means and stds of data? NO
         mean_0: Union[Tensor, float] = 0.0,
         # ? Should I rather break the convention and ask always
-        # ? for the means and stds of data?
+        # ? for the means and stds of data? NO
         std_0: Union[Tensor, float] = 1.0,
         t_min: float = 1e-3,
         t_max: float = 1.0,
@@ -98,15 +98,9 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         # ? Should I not break the convention and ask always for the means
         # ? and stds of data?
         if not isinstance(mean_0, Tensor):
-            # mean_0 = torch.tensor([mean_0])
-            mean_0_tensor = torch.full(input_shape, float(mean_0))
-            mean_0_tensor = mean_0_tensor.unsqueeze(0)  # Shape becomes [1, T, F]
-            mean_0 = mean_0_tensor
+            mean_0 = torch.tensor([mean_0])
         if not isinstance(std_0, Tensor):
-            # std_0 = torch.tensor([std_0])
-            std_0_tensor = torch.full(input_shape, float(std_0))
-            std_0_tensor = std_0_tensor.unsqueeze(0)
-            std_0 = std_0_tensor
+            std_0 = torch.tensor([std_0])
 
         self.register_buffer("mean_0", mean_0.clone().detach())
         self.register_buffer("std_0", std_0.clone().detach())
