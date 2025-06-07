@@ -20,8 +20,8 @@ class MaskedVEScoreEstimator(MaskedConditionalScoreEstimator):
         weight_fn: Union[str, Callable] = "max_likelihood",
         sigma_min: float = 1e-4,
         sigma_max: float = 10.0,
-        mean_0: float = 0.0,
-        std_0: float = 1.0,
+        mean_0: Union[Tensor, float] = 0.0,
+        std_0: Union[Tensor, float] = 1.0,
     ) -> None:
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
