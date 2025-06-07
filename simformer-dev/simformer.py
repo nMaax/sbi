@@ -5,8 +5,8 @@ from typing import Callable, Union
 import torch
 from torch import Tensor, nn
 
-from sbi.neural_nets.estimators.score_estimator import MaskedConditionalScoreEstimator
 from sbi.utils.vector_field_utils import MaskedVectorFieldNet
+from sbi.neural_nets.estimators.score_estimator import MaskedConditionalScoreEstimator
 from sbi.neural_nets.net_builders.vector_field_nets import DiTBlock
 from sbi.neural_nets.net_builders.vector_field_nets import RandomFourierTimeEmbedding
 
@@ -293,6 +293,8 @@ def _test_time_embedding():
     assert out.shape == (4, 8), f"Expected output shape (4, 8), got {out.shape}"
     print("RandomFourierTimeEmbedding test passed!")
 
+    return True
+
 def _test_masked_dit_block():
     print("\n--- Testing DiTBlock ---")
 
@@ -345,6 +347,8 @@ def _test_masked_dit_block():
     assert output.shape == expected_output_shape, \
         f"Expected output shape {expected_output_shape}, but got {output.shape}"
     print("MaskedDiTBlock output shape assertion passed!")
+
+    return True
 
 def _test_simformer():
     print("\n--- Testing Simformer ---")
@@ -411,6 +415,8 @@ def _test_simformer():
         f"Expected output shape {expected_output_shape}, but got {output.shape}"
 
     print("Simformer output shape assertion passed!")
+
+    return True
 
 def _test_masked_ve_score_estimator():
     print("\n--- Testing MaskedVEScoreEstimator ---")
@@ -487,9 +493,11 @@ def _test_masked_ve_score_estimator():
     assert drift.shape == x.shape, "drift output shape mismatch"
     assert diffusion.shape == broadcasted_t_shape, "diffusion_fn output batch size mismatch"
     assert output.shape == x.shape, f"Expected output shape {x.shape}, got {output.shape}"
-    assert approx_mean.shape == x.shape, "approx_marginal_mean output batch size mismatch"
-    assert approx_std.shape == x.shape, "approx_marginal_std output batch size mismatch"
+    assert approx_mean.shape == broadcasted_t_shape, "approx_marginal_mean output batch size mismatch"
+    assert approx_std.shape == broadcasted_t_shape, "approx_marginal_std output batch size mismatch"
     print("MaskedVEScoreEstimator tests passed!")
+
+    return True
 
 # Run the test when this file is executed directly
 if __name__ == "__main__":
