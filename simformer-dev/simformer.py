@@ -167,7 +167,8 @@ class MaskedDiTBlock(DiTBlock):
         # Prepare attention mask
         if mask is not None:
             # Ensure the mask is boolean: True for masked, False for allowed
-            mask = mask.bool()
+            #! Torch uses "inverse" convention for attention with boolean masks!
+            mask = ~mask.bool()
             #? nn.MultiheadAttention expects [B*num_heads, T, T] or [T, T], so flatten batch if needed?
 
         # Self-attention
