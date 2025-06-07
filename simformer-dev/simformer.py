@@ -263,8 +263,9 @@ class Simformer(MaskedVectorFieldNet):
         conditioning_h = self.conditioning_parameter.expand(B, T, self.dim_cond) * condition_mask.unsqueeze(-1)  # [B, T, dim_cond]
 
         # Time embedding
-        #? Should I normalize time?
-        t_h = self.time_embedding(t)  # [B, dim_t]
+        #? Normalize time to [0, 1] if not already done (should I do this?)
+        t_norm = (t - t.min()) / (t.max() - t.min() + 1e-8)
+        t_h = self.time_embedding(t_norm)  # [B, dim_t]
 
         # Concatenate tokens
         tokens = torch.cat([val_h, id_h, conditioning_h], dim=-1)  # [B, T, dim_val+dim_id+dim_cond]
