@@ -268,6 +268,49 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         # score network around the mean
         # (see https://arxiv.org/pdf/2101.03288 for details).
         # NOTE: As it is a Taylor expansion, it will only work well for small std.
+        if control_variate:
+            # Compute score at the mean (mean_t), with same masks
+            score_mean_pred = self.forward(
+                mean_t, time, condition_mask, edge_mask
+            )  # [B, T, F]
+
+            # Squeeze std_t for broadcasting
+            s = std_t
+            while s.dim() > 1 and s.shape[-1] == 1:
+                s = s.squeeze(-1)  # [B, T] or [B]
+
+            # Compute terms for control variate
+            # Only apply to unobserved (latent) nodes
+            mask_f = ~condition_mask.bool().unsqueeze(-1).expand_as(eps)  # [B, T, F]
+
+            # D: number of features per node
+            D = eps.shape[-1]
+
+            # term1: 2/s * sum(eps * score_mean_pred) over F, masked
+            term1 = (
+                2 / s * torch.sum(eps * score_mean_pred * mask_f, dim=-1).unsqueeze(-1)
+            )
+            # term2: sum(eps^2) over F, masked, divided by s^2
+            term2 = torch.sum((eps**2) * mask_f, dim=-1).unsqueeze(-1) / (s**2)
+            # term3: D / s^2, but only for unobserved nodes
+            term3 = mask_f * (D / (s**2))
+
+            # Sum over features, keep [B, T]
+            control_variate = term3 - term1 - term2
+
+            # Only apply control variate where std is small
+            control_variate = torch.where(
+                s < control_variate_threshold,
+                control_variate,
+                torch.zeros_like(control_variate),
+            )
+
+            # Sum over T and F to match loss shape [B, 1, 1]
+            control_variate = torch.sum(control_variate, dim=-1, keepdim=True)  # [B, 1]
+
+            # Add to loss
+            loss = loss + control_variate  # [B, 1, 1]
+
         return loss
 
     def approx_marginal_mean(self, times: Tensor) -> Tensor:
