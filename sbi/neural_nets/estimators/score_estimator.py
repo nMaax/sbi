@@ -173,6 +173,7 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         edge_mask: Optional[Tensor] = None,  # ? Generated at training loop!
         control_variate=True,
         control_variate_threshold=0.3,
+        rebalance_loss=True,
     ) -> Tensor:
         r"""Defines the denoising score matching loss (e.g., from Song et al., ICLR
         2021). A random diffusion time is sampled from [0,1], and the network is trained
@@ -310,6 +311,11 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
 
             # Add to loss
             loss = loss + control_variate  # [B, 1, 1]
+
+        if rebalance_loss:
+            # Count number of unobserved (latent) elements per batch
+            num_elements = (~condition_mask).sum(dim=1, keepdim=True).clamp(min=1)
+            loss = loss / num_elements.unsqueeze(-1)
 
         return loss
 
