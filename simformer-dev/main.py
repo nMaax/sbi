@@ -37,15 +37,17 @@ class LinearGaussian(Dataset):
 
 # %%
 # Set number of training epochs and learning rate
+n = 50000
+batch_size = 1024
 num_epochs = 100
-lr = 1e-1
+lr = 1e-4
 
 # Feature dimension size
 in_features = 5
 
 # Instantiate dataset and dataloader
-train_dataset = LinearGaussian(num_features=in_features, n=10000)
-train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+train_dataset = LinearGaussian(num_features=in_features, n=n)
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
 # Sequence dimension size
 num_nodes = train_dataset.num_nodes
