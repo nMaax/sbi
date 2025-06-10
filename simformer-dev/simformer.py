@@ -101,6 +101,59 @@ class MaskedVEScoreEstimator(MaskedConditionalScoreEstimator):
 
         return g
 
+class MaskedSimformerBlock(nn.Module):
+    def __init__(
+        self,
+        hidden_dim,
+        cond_dim,
+        num_heads,
+        mlp_ratio=2,
+        activation=nn.GELU
+    ):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(hidden_dim)
+        self.attn = nn.MultiheadAttention(
+            embed_dim=hidden_dim,
+            num_heads=num_heads,
+            batch_first=True
+        )
+        self.norm2 = nn.LayerNorm(hidden_dim)
+        self.mlp_fc1 = nn.Linear(hidden_dim, int(hidden_dim * mlp_ratio))
+        self.mlp_act = activation()
+        self.mlp_time_proj = nn.Linear(cond_dim, int(hidden_dim * mlp_ratio))
+        self.mlp_fc2 = nn.Linear(int(hidden_dim * mlp_ratio), hidden_dim)
+
+    def forward(self, x, cond, mask):
+        B, T, D = x.shape
+
+        # First LayerNorm and self-attention with masking
+        x_norm = self.norm1(x)
+
+        if mask is not None:
+            if mask.dim() == 3:
+                # mask: [B, T, T] -> [B * num_heads, T, T]
+                B, T, _ = mask.shape
+                mask = mask.unsqueeze(1).expand(B, self.attn.num_heads, T, T).reshape(B * self.attn.num_heads, T, T)
+
+        attn_out, _ = self.attn(
+            query=x_norm,
+            key=x_norm,
+            value=x_norm,
+            attn_mask=mask
+        )
+        x = x + attn_out
+
+        # Second LayerNorm and MLP with time conditioning
+        x_norm = self.norm2(x)
+        x_mlp = self.mlp_fc1(x_norm)
+        time_emb = self.mlp_time_proj(cond).unsqueeze(1)
+        x_mlp = x_mlp + time_emb
+        x_mlp = self.mlp_act(x_mlp)
+        x_mlp = self.mlp_fc2(x_mlp)
+
+        x = x + x_mlp
+        return x
+
 class MaskedDiTBlock(DiTBlock):
     def __init__(
         self,
@@ -162,7 +215,8 @@ class Simformer(MaskedVectorFieldNet):
             dim_t=16,
             dim_hidden=128,
             num_blocks=4,
-            num_heads=8
+            num_heads=8,
+            ada_time = False,
         ):
         super().__init__()
         self.in_features = in_features # Number of features by each node (F)
@@ -192,8 +246,9 @@ class Simformer(MaskedVectorFieldNet):
         self.in_proj = nn.Linear(dim_val + dim_id + dim_cond, dim_hidden)
 
         # Transformer blocks
+        Block = MaskedDiTBlock if ada_time == True else MaskedSimformerBlock
         self.blocks = nn.ModuleList([
-            MaskedDiTBlock(dim_hidden, dim_t, num_heads) for _ in range(num_blocks)
+            Block(dim_hidden, dim_t, num_heads) for _ in range(num_blocks)
         ])
 
         # Output projection
