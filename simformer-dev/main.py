@@ -18,25 +18,22 @@ class LinearGaussian(Dataset):
         theta1 = np.random.normal(0, 3, size=(n, num_features))
         x1 = 2 * np.sin(theta1) + np.random.normal(0, 0.5, size=(n, num_features))
         x2 = 0.1 * theta1 ** 2 + 0.5 * np.abs(x1) * np.random.normal(0, 1, size=(n, num_features))
-        self.edge_mask = torch.tensor([
-            [1, 1, 1,],
-            [0, 1, 1,],
-            [0, 0, 1,],
-        ])
 
         data = np.concatenate([theta1, x1, x2], axis=1).reshape(n, -1, num_features)
         self.data = torch.from_numpy(data).float()
 
         self.mean_0_dataset = self.data.mean(dim=0) # Shape: (num_nodes, num_features)
         self.std_0_dataset = self.data.std(dim=0)   # Shape: (num_nodes, num_features)
-        self.std_0_dataset[self.std_0_dataset == 0] = 1e-6 # Or a small epsilon like 1e-6
+        self.std_0_dataset[self.std_0_dataset == 0] = 1e-8 # A small epsilon
 
 
     def __len__(self):
         return self.data.shape[0]
 
     def __getitem__(self, idx):
-        return {'input': self.data[idx]}
+        edge_mask = torch.ones((self.num_nodes, self.num_nodes))
+        condition_mask = torch.bernoulli(torch.full((self.num_nodes,), 0.33))
+        return {'input': self.data[idx], 'edge_mask': edge_mask, 'condition_mask': condition_mask}
 
 # %%
 # Set number of training epochs and learning rate
@@ -98,8 +95,8 @@ for epoch in range(num_epochs):
     for batch_idx, data_batch in enumerate(train_loader):
         # Extract inputs, and potentially masks if they are part of your dataset
         input = data_batch['input'].to(device)
-        condition_mask = data_batch['condition_mask'].to(device) if 'condition_mask' in data_batch else None
         edge_mask = data_batch['edge_mask'].to(device) if 'edge_mask' in data_batch else None
+        condition_mask = data_batch['condition_mask'].to(device) if 'condition_mask' in data_batch else None
 
         # Clear any accumulated gradients from the previous step
         optimizer.zero_grad()
