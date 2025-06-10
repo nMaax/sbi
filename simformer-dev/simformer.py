@@ -130,10 +130,6 @@ class MaskedVEScoreEstimator(MaskedConditionalScoreEstimator):
             (2 * math.log(self.sigma_max / self.sigma_min))
         )
 
-        #? Is this what I need to do in my setting?
-        while len(g.shape) < len(input.shape):
-            g = g.unsqueeze(-1)
-
         return g
 
 class MaskedDiTBlock(DiTBlock):
@@ -166,10 +162,11 @@ class MaskedDiTBlock(DiTBlock):
 
         # Prepare attention mask
         if mask is not None:
-            # Ensure the mask is boolean: True for masked, False for allowed
-            #! Torch uses "inverse" convention for attention with boolean masks!
-            mask = ~mask.bool()
-            #? nn.MultiheadAttention expects [B*num_heads, T, T] or [T, T], so flatten batch if needed?
+            # Expand mask for multi-head attention if needed
+            if mask.dim() == 3:
+                # mask: [B, T, T] -> [B * num_heads, T, T]
+                B, T, _ = mask.shape
+                mask = mask.unsqueeze(1).expand(B, self.attn.num_heads, T, T).reshape(B * self.attn,num_heads, T, T)
 
         # Self-attention
         attn_out, _ = self.attn(x_norm, x_norm, x_norm, attn_mask=mask)
@@ -235,11 +232,12 @@ class Simformer(MaskedVectorFieldNet):
 
     def forward(self, inputs, t, condition_mask, edge_mask):
 
-        device = inputs.device
         B, T, F = inputs.shape
+        device = inputs.device
 
+        assert t.shape == (B,), f"{B} time values must be provided for batches of size {B}"
         assert condition_mask.shape == (B, T), "condition_mask must have the same batch size and sequence length as inputs"
-        assert edge_mask.shape == (T, T), "edge_mask must have same shape as the sequence length"
+        assert edge_mask.shape == (B, T, T), "edge_mask must have same shape as the sequence length"
 
         # Tokenize on val
         val_h = self.val_linear(inputs) # [B, T, dim_val]
@@ -255,16 +253,18 @@ class Simformer(MaskedVectorFieldNet):
 
         # Time embedding
         #? Normalize time to [0, 1] if not already done (should I do this?)
-        t_norm = (t - t.min()) / (t.max() - t.min() + 1e-8)
-        t_h = self.time_embedding(t_norm)  # [B, dim_t]
+        #t_norm = (t - t.min()) / (t.max() - t.min() + 1e-8)
+        t_h = self.time_embedding(t)  # [B, dim_t]
 
         # Concatenate tokens
         tokens = torch.cat([val_h, id_h, conditioning_h], dim=-1)  # [B, T, dim_val+dim_id+dim_cond]
         h = self.in_proj(tokens)  # [B, T, dim_hidden]
 
         # Pass through transformer blocks
+        # Invert mask to follow Torch convention
+        # True: masked (no attention), False: allowed (attention)
         for block in self.blocks:
-            h = block(h, t_h, edge_mask)
+            h = block(h, t_h, ~edge_mask.bool())
 
         # Output projection
         #? Should this be flattened as [B, T*F]?

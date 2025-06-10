@@ -118,7 +118,7 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         mean = self.approx_marginal_mean(time)  # [B, 1, F] or broadcastable
         std = self.approx_marginal_std(time)  # [B, 1, F] or broadcastable
 
-        #! Skipped, as Simformer expects time as it is, not as a level of std
+        # ? Skipped, as Simformer expects time as it is, not as a level of std
         # time_enc = self.std_fn(time)
 
         # Z-score the input
@@ -128,15 +128,11 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         score_gaussian = (input - mean) / (std**2)
 
         # Model prediction (no flattening, pass masks)
-        score_pred = self.net(
-            input_enc, time.squeeze(-1), condition_mask, edge_mask
-        )  # [B, T, F]
+        score_pred = self.net(input_enc, time, condition_mask, edge_mask)  # [B, T, F]
 
         # Output pre-conditioned score (same scaling as in reference)
         scale = self.mean_t_fn(time) / self.std_fn(time)
 
-        #! Pay attention to the shape, it should be [B, T, F]
-        #! or below ([B, T], [B,])
         # Ensure scale is broadcastable to [B, T, F]
         while scale.dim() < input.dim():
             scale = scale.unsqueeze(-1)
@@ -172,7 +168,7 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
     def loss(
         self,
         input: Tensor,
-        times: Optional[Tensor] = None,  # ? Generated at training loop!
+        time: Optional[Tensor] = None,  # ? Generated at training loop!
         condition_mask: Optional[Tensor] = None,  # ? Generated at training loop!
         edge_mask: Optional[Tensor] = None,  # ? Generated at training loop!
         control_variate=True,
@@ -208,20 +204,17 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         B, T, F = input.shape
 
         # Sample times if not provided
-        if times is None:
-            times = torch.rand(B, device=device)
-            times = times * (self.t_max - self.t_min)
-            times = times + self.t_min  # [B,]
+        if time is None:
+            time = torch.rand(B, device=device)
+            time = time * (self.t_max - self.t_min)
+            time = time + self.t_min  # [B,]
 
         # Sample noise
         eps = torch.randn_like(input)  # [B, T, F]
 
         # Compute mean and std for the SDE
-        #! Do shapes make sense?
-        mean_t = self.mean_fn(input, times)  # [B, T, F]
-        #! Pay attention to the shape, it should be [B, T, F]
-        #! or below ([B, T], [B,])
-        std_t = self.std_fn(times)  # [B, 1, 1] or [B, 1] or [B]
+        mean_t = self.mean_fn(input, time)  # [B, T, F]
+        std_t = self.std_fn(time)  # [B, 1, 1] or [B, 1] or [B]
         while std_t.dim() < input.dim():
             std_t = std_t.unsqueeze(-1)
         std_t = std_t.expand_as(input)  # [B, T, F]
@@ -238,19 +231,19 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
             condition_mask = torch.bernoulli(torch.full((B, T), 0.33, device=device))
         condition_mask = condition_mask.bool()
         # Shape of condition_mask is [B, T], I unsqueeze for broadcasting on F
-        input_noised = torch.where(condition_mask.unsqueeze(-1), input, input_noised)
+        input_noised = torch.where(
+            condition_mask.unsqueeze(-1).expand(B, T, F), input, input_noised
+        )
 
         # If edge_mask is None, generate one of all ones [T, T]
         if edge_mask is None:
-            edge_mask = torch.ones(T, T, device=device)
+            edge_mask = torch.ones(B, T, T, device=device)
+        edge_mask = edge_mask.bool()
 
         # Model prediction
         score_pred = self.forward(
-            input_noised, times.squeeze(-1), condition_mask, edge_mask
+            input_noised, time, condition_mask, edge_mask
         )  # [B, T, F]
-
-        # Weight and sum over T and F
-        weights = self.weight_fn(times)
 
         # Compute MSE loss, mask out observed entries
         # sum tensor of shape [B, T, F] over F
@@ -259,8 +252,14 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
 
         #! In JAX he prefers doing sum on T (dim=-2), why?
         loss = torch.sum(loss, dim=-1, keepdim=True)  # [B, T, 1]
+
         #! Since sbi expects loss-per-batch, I sum on both T and F
         loss = torch.sum(loss, dim=-1, keepdim=True)  # [B, 1, 1]
+
+        # ? In JAX he multiplies by weights before doing the rebalance, why?
+        # ? I choose to do it before control variate too
+        weights = self.weight_fn(time)
+        loss = weights * loss
 
         # For times -> 0 this loss has high variance; a standard method to reduce the
         # variance is to use a control variate, i.e., a term that has zero expectation
@@ -269,10 +268,7 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         # score network around the mean
         # (see https://arxiv.org/pdf/2101.03288 for details).
         # NOTE: As it is a Taylor expansion, it will only work well for small std.
-        # TODO control_variate // rebalance loss in JAX
-
-        #! In JAX he also multiplies by weights before doing the rebalance, why?
-        return weights * loss
+        return loss
 
     def approx_marginal_mean(self, times: Tensor) -> Tensor:
         r"""Approximate the marginal mean of the target distribution at a given time.
