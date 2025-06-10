@@ -43,25 +43,10 @@ class MaskedVEScoreEstimator(MaskedConditionalScoreEstimator):
         Returns:
             Conditional mean at a given time.
         """
-        # Handle case when times has 3 dimensions during sampling
-        original_shape = times.shape
-        has_sample_dim = len(original_shape) == 3
-
-        #? Is this what I need to do in my setting?
-        if has_sample_dim:
-            # Create ones tensor
-            phi = torch.ones_like(times.reshape(-1), device=times.device)
-            # Add necessary dimensions
-            for _ in range(len(self.input_shape)):
-                phi = phi.unsqueeze(-1)
-            # Reshape back to original
-            phi = phi.reshape(*original_shape[:-1], *phi.shape[1:])
-            return phi
-        else:
-            phi = torch.ones_like(times, device=times.device)
-            for _ in range(len(self.input_shape)):
-                phi = phi.unsqueeze(-1)
-            return phi
+        phi = torch.ones_like(times, device=times.device)
+        for _ in range(len(self.input_shape)):
+            phi = phi.unsqueeze(-1)
+        return phi
 
     def std_fn(self, times: Tensor) -> Tensor:
         """Standard deviation function for variance exploding SDEs.
@@ -72,26 +57,10 @@ class MaskedVEScoreEstimator(MaskedConditionalScoreEstimator):
         Returns:
             Standard deviation at a given time.
         """
-        # Handle case when times has 3 dimensions during sampling
-        original_shape = times.shape
-        has_sample_dim = len(original_shape) == 3
-
-        #? Is this what I need to do in my setting?
-        if has_sample_dim:
-            # Flatten for computation
-            times_flat = times.reshape(-1)
-            std = self.sigma_min * (self.sigma_max / self.sigma_min) ** times_flat
-            # Add necessary dimensions
-            for _ in range(len(self.input_shape)):
-                std = std.unsqueeze(-1)
-            # Reshape back to original
-            std = std.reshape(*original_shape[:-1], *std.shape[1:])
-            return std
-        else:
-            std = self.sigma_min * (self.sigma_max / self.sigma_min) ** times
-            for _ in range(len(self.input_shape)):
-                std = std.unsqueeze(-1)
-            return std
+        std = self.sigma_min * (self.sigma_max / self.sigma_min) ** times
+        for _ in range(len(self.input_shape)):
+            std = std.unsqueeze(-1)
+        return std
 
     def _sigma_schedule(self, times: Tensor) -> Tensor:
         """Geometric sigma schedule for variance exploding SDEs.
