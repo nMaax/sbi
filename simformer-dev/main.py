@@ -10,7 +10,6 @@ from simformer import Simformer, MaskedVEScoreEstimator
 
 
 # %%
-
 class LinearGaussian(Dataset):
     def __init__(self, num_features, n):
         self.num_nodes = 3
@@ -39,7 +38,7 @@ class LinearGaussian(Dataset):
 # Set number of training epochs and learning rate
 n = 50000
 batch_size = 1024
-num_epochs = 100
+num_epochs = 200
 lr = 1e-4
 
 # Feature dimension size
@@ -73,7 +72,7 @@ model = MaskedVEScoreEstimator(
 optimizer = AdamW(model.parameters(), lr=lr)
 
 # Define scheduler
-scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs)
+scheduler = None #CosineAnnealingLR(optimizer, T_max=num_epochs)
 
 # Move model to device (GPU)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -83,6 +82,9 @@ print(f"Moved model to {device}")
 print(model)
 
 # %%
+# Losses
+lossi = []
+
 # Loop for each epoch
 for epoch in range(num_epochs):
 
@@ -128,14 +130,28 @@ for epoch in range(num_epochs):
         optimizer.step()
 
     # Step the learning rate scheduler
-    scheduler.step()
+    if scheduler:
+        scheduler.step()
 
     # Compute average train loss
     avg_train_loss = total_train_loss / num_train_batches
 
+    # Save current loss
+    lossi.append(avg_train_loss)
+
     # Print stats for loss for the current epoch
     print(f"Epoch [{epoch+1}/{num_epochs}]")
-    print(f"\tTotal train loss: {total_train_loss:.4e}")
-    print(f"\tNumber of train batches: {num_train_batches}")
-    print(f"\tAverage train Loss: {avg_train_loss:.4e}")
+    print(f"\tAverage training Loss: {avg_train_loss:.4e}")
+# %%
+
+import matplotlib.pyplot as plt
+
+plt.figure(figsize=(8, 5))
+plt.plot(lossi, label='Train Loss')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.title('Training Loss over Epochs')
+plt.legend()
+plt.grid(True)
+plt.show()
 # %%
