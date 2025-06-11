@@ -128,6 +128,7 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         score_gaussian = (input - mean) / (std**2)
 
         # Model prediction (no flattening, pass masks)
+        # Pass time_enc instead of time
         score_pred = self.net(input_enc, time, condition_mask, edge_mask)  # [B, T, F]
 
         # Output pre-conditioned score (same scaling as in reference)
@@ -251,16 +252,9 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         loss = (score_pred - score_target) ** 2.0
         loss = torch.where(condition_mask.unsqueeze(-1), torch.zeros_like(loss), loss)
 
-        #! In JAX he prefers doing sum on T (dim=-2), why?
+        # Since sbi expects loss-per-batch, I sum on both T and F
         loss = torch.sum(loss, dim=-1, keepdim=True)  # [B, T, 1]
-
-        #! Since sbi expects loss-per-batch, I sum on both T and F
-        loss = torch.sum(loss, dim=-1, keepdim=True)  # [B, 1, 1]
-
-        # ? In JAX he multiplies by weights before doing the rebalance, why?
-        # ? I choose to do it before control variate too
-        weights = self.weight_fn(time)
-        loss = weights * loss
+        loss = torch.sum(loss, dim=-2, keepdim=True)  # [B, 1, 1]
 
         # For times -> 0 this loss has high variance; a standard method to reduce the
         # variance is to use a control variate, i.e., a term that has zero expectation
@@ -269,6 +263,8 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         # score network around the mean
         # (see https://arxiv.org/pdf/2101.03288 for details).
         # NOTE: As it is a Taylor expansion, it will only work well for small std.
+
+        control_variate = False  # TODO
         if control_variate:
             # Compute score at the mean (mean_t), with same masks
             score_mean_pred = self.forward(
@@ -316,6 +312,9 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
             # Count number of unobserved (latent) elements per batch
             num_elements = (~condition_mask).sum(dim=1, keepdim=True).clamp(min=1)
             loss = loss / num_elements.unsqueeze(-1)
+
+        weights = self.weight_fn(time)
+        loss = torch.tensor(weights).unsqueeze(-1).unsqueeze(-1) * loss
 
         return loss
 
