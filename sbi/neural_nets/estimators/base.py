@@ -27,7 +27,9 @@ class MaskedConditionalEstimator(nn.Module, ABC):
         return self._input_shape
 
     @abstractmethod
-    def loss(self, input: Tensor, **kwargs) -> Tensor:
+    def loss(
+        self, input: Tensor, conditioning_mask: Tensor, edge_mask: Tensor, **kwargs
+    ) -> Tensor:
         r"""Return the loss for training the estimator.
 
         Args:
