@@ -264,7 +264,6 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         # (see https://arxiv.org/pdf/2101.03288 for details).
         # NOTE: As it is a Taylor expansion, it will only work well for small std.
 
-        control_variate = False  # TODO
         if control_variate:
             # Compute score at the mean (mean_t), with same masks
             score_mean_pred = self.forward(
@@ -303,7 +302,12 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
             )
 
             # Sum over T and F to match loss shape [B, 1, 1]
-            control_variate = torch.sum(control_variate, dim=-1, keepdim=True)  # [B, 1]
+            control_variate = torch.sum(
+                control_variate, dim=-1, keepdim=True
+            )  # [B, T, 1]
+            control_variate = torch.sum(
+                control_variate, dim=-2, keepdim=True
+            )  # [B, 1, 1]
 
             # Add to loss
             loss = loss + control_variate  # [B, 1, 1]
