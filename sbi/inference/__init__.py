@@ -1,5 +1,6 @@
 from sbi.inference.abc import MCABC, SMCABC
 from sbi.inference.trainers.base import (
+    MaskedNeuralInference,  # noqa: F401
     NeuralInference,  # noqa: F401
     check_if_proposal_has_default_x,
     infer,
