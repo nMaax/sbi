@@ -29,8 +29,8 @@ class Simformer(MaskedVectorFieldInference):
     Instead of sampling only from Posterior or Likelihood, Simformer is able
     to sample from any arbitrary joint conditional distribution.
 
-    NOTE: Simformer does not support multi-round inference. Such API is still provided
-        for coherence with sbi, but unused.
+    NOTE: Simformer does not support multi-round inference yet.
+        Such API is still provided for coherence with sbi, but unused.
 
     NOTE: Simformer does not support prior in the sense of other sbi methods.
         Such API is still provided for coherence with sbi, but unused.
@@ -89,6 +89,7 @@ class Simformer(MaskedVectorFieldInference):
             **kwargs,
         )
 
+    # TODO: must develop the factory for Simformer
     def _build_default_nn_fn(self, **kwargs) -> MaskedVectorFieldEstimatorBuilder:
         net_type = kwargs.pop("vector_field_estimator_builder", "simformer_standard")
         return simformer_builder(model=net_type, **kwargs)
