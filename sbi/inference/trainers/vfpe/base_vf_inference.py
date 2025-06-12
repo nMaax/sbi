@@ -36,7 +36,7 @@ from sbi.utils.torchutils import assert_all_finite
 
 
 class MaskedVectorFieldEstimatorBuilder(Protocol):
-    """Protocol for building a vector field estimator from data."""
+    """Protocol for building a masked vector field estimator from data."""
 
     def __call__(
         self, inputs: Tensor, conditioning_mask: Tensor, edge_mask: Tensor
@@ -56,7 +56,7 @@ class MaskedVectorFieldEstimatorBuilder(Protocol):
                 it is the equivalent of the adjacency mask in a DAG.
 
         Returns:
-            Msked Vector field estimator.
+            Masked vector field estimator.
         """
         ...
 
@@ -86,7 +86,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         prior: Optional[Distribution] = None,
         vector_field_estimator_builder: Union[
             str, MaskedVectorFieldEstimatorBuilder
-        ] = "simformer",
+        ] = "simformer_standard",
         device: str = "cpu",
         logging_level: Union[int, str] = "WARNING",
         summary_writer: Optional[SummaryWriter] = None,
@@ -141,7 +141,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
 
     @abstractmethod
     def _build_default_nn_fn(self, **kwargs) -> MaskedVectorFieldEstimatorBuilder:
-        pass  # ? Why pass? Not implemented yet?
+        pass  # ? Why pass? Shouldn't be a "Not implemented error" be more appropriate?
 
     # ? isn't this doing (almost) the same as defined in the parent class?
     def append_simulations(
@@ -228,7 +228,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         self._inputs_roundwise.append(inputs)
         self._conditioning_masks_roundwise.append(conditioning_masks)
         self._edge_masks_roundwise.append(edge_masks)
-        self._prior_masks.append(prior_masks)
+        self._prior_masks.append(prior_masks)  # ! Makes sense only for multi-round
 
         self._proposal_roundwise.append(proposal)
 
@@ -607,6 +607,20 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
             converged = True
 
         return converged
+
+    def _build_joint(
+        self,
+        conditional_mask: Tensor,
+        edge_mask: Tensor,
+        vector_field_estimator: Optional[MaskedConditionalVectorFieldEstimator] = None,
+        prior: Optional[Distribution] = None,
+        sample_with: str = "sde",
+        **kwargs,
+    ):
+        # TODO quick implementation for debugging
+        # In the future we could call _build_posterior
+        # as build_join(conditionig_mask=posterior_mask)
+        pass
 
     # TODO Could be kept, while also making _build_joint()
     def _build_posterior(
