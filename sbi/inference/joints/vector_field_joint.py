@@ -10,8 +10,8 @@ from torch.distributions import Distribution
 from sbi.inference.joints.base_joint import NeuralJoint
 from sbi.inference.potentials.vector_field_potential import (
     CallableDifferentiablePotentialFunction,
-    VectorFieldBasedPotential,
-    vector_field_estimator_based_potential,
+    MaskedVectorFieldBasedPotential,
+    masked_vector_field_estimator_based_potential,
 )
 from sbi.neural_nets.estimators.base import (
     MaskedConditionalVectorFieldEstimator,
@@ -26,22 +26,23 @@ from sbi.samplers.score.predictors import Predictor
 from sbi.sbi_types import Shape
 from sbi.utils import check_prior
 from sbi.utils.sbiutils import gradient_ascent, within_support
-from sbi.utils.torchutils import ensure_theta_batched
+from sbi.utils.torchutils import ensure_latent_batched
 
 
 class VectorFieldJoint(NeuralJoint):
-    r"""Posterior based on flow- or score-matching estimators.
+    r"""Arbitrary joint based score-matching estimators.
 
-    This posterior samples from the vector field model - typically a score-based or a
-    flow matching model - given the `vector_field_estimator` and rejects samples that
-    lie outside of the prior bounds.
+    This joint distribution samples from the vector field model - typically
+    a score-based or a flow matching model - given the `vector_field_estimator`
+    and rejects samples that lie outside of the prior bounds.
 
-    The posterior is defined by a vector field estimator and a prior. The vector field
-    estimator defines a continuous transformation from a base distribution to the
-    approximated posterior distribution. Sampling is done by running either
-    an ordinary differential equation (ODE) or a stochastic differential equation
-    (SDE) defined by the vector field estimator with the starting points sampled from
-    the base distribution.
+    The joint distribution is defined by a vector field estimator and a prior.
+    The vector field estimator defines a continuous transformation from a base
+    distribution to the approximated posterior distribution.
+
+    Sampling is done by running either an ordinary differential equation (ODE)
+    or a stochastic differential equation (SDE) defined by the vector field estimator
+    with the starting points sampled from the base distribution.
 
     Log probabilities are obtained by calling the potential function, which in turn uses
     the ODE to compute the log-probability.
@@ -75,7 +76,7 @@ class VectorFieldJoint(NeuralJoint):
         """
 
         check_prior(prior)
-        potential_fn, theta_transform = vector_field_estimator_based_potential(
+        potential_fn, latent_transform = masked_vector_field_estimator_based_potential(
             vector_field_estimator,
             prior,
             x_o=None,
@@ -84,11 +85,11 @@ class VectorFieldJoint(NeuralJoint):
         )
         super().__init__(
             potential_fn=potential_fn,
-            theta_transform=theta_transform,
+            latent_transform=latent_transform,
             device=device,
         )
-        # Set the potential function type.
-        self.potential_fn: VectorFieldBasedPotential = potential_fn
+        # Set the potential function type. (alredy done above)
+        # self.potential_fn: MaskedVectorFieldBasedPotential = potential_fn
 
         self.prior = prior
         self.enable_transform = enable_transform
@@ -106,7 +107,7 @@ class VectorFieldJoint(NeuralJoint):
             vector_field_estimator."""
 
     def to(self, device: Union[str, torch.device]) -> None:
-        """Move posterior to device.
+        """Move joint distribution to device.
 
         Args:
             device: device where to move the posterior to.
@@ -121,7 +122,7 @@ class VectorFieldJoint(NeuralJoint):
         else:
             raise ValueError("""Posterior estimator has no attribute to(device).""")
 
-        potential_fn, theta_transform = vector_field_estimator_based_potential(
+        potential_fn, latent_transform = masked_vector_field_estimator_based_potential(
             self.vector_field_estimator,
             self.prior,
             x_o=None,
@@ -132,14 +133,14 @@ class VectorFieldJoint(NeuralJoint):
             x_o = self._x.to(device)
         super().__init__(
             potential_fn=potential_fn,
-            theta_transform=theta_transform,
+            latent_transform=latent_transform,
             device=device,
         )
         # super().__init__ erases the self._x, so we need to set it again
         if x_o is not None:
             self.set_default_x(x_o)
 
-        self.potential_fn: VectorFieldBasedPotential = potential_fn
+        self.potential_fn: MaskedVectorFieldBasedPotential = potential_fn
 
     def sample(
         self,
@@ -157,7 +158,7 @@ class VectorFieldJoint(NeuralJoint):
         sample_with: Optional[str] = None,
         show_progress_bars: bool = True,
     ) -> Tensor:
-        r"""Return samples from joint distribution $p(latent|observed)$.
+        r"""Return samples from joint distribution $p(latent|x)$.
 
         Args:
             sample_shape: Shape of the samples to be drawn.
@@ -210,7 +211,7 @@ class VectorFieldJoint(NeuralJoint):
         if sample_with == "ode":
             samples = rejection.accept_reject_sample(
                 proposal=self.sample_via_ode,
-                accept_reject_fn=lambda theta: within_support(self.prior, theta),
+                accept_reject_fn=lambda latent: within_support(self.prior, latent),
                 num_samples=num_samples,
                 show_progress_bars=show_progress_bars,
                 max_sampling_batch_size=max_sampling_batch_size,
@@ -228,7 +229,7 @@ class VectorFieldJoint(NeuralJoint):
             }
             samples = rejection.accept_reject_sample(
                 proposal=self._sample_via_diffusion,
-                accept_reject_fn=lambda theta: within_support(self.prior, theta),
+                accept_reject_fn=lambda latent: within_support(self.prior, latent),
                 num_samples=num_samples,
                 show_progress_bars=show_progress_bars,
                 max_sampling_batch_size=max_sampling_batch_size,
@@ -256,7 +257,7 @@ class VectorFieldJoint(NeuralJoint):
         max_sampling_batch_size: int = 10_000,
         show_progress_bars: bool = True,
     ) -> Tensor:
-        r"""Return samples from joint distribution $p(latent|observed)$.
+        r"""Return samples from joint distribution $p(latent|x)$.
 
         NOTE: this method can be unsupported for some vector field estimators, e.g.,
         if the vector field estimator was trained with a custom flow matching routine
@@ -349,7 +350,7 @@ class VectorFieldJoint(NeuralJoint):
 
     def log_prob(
         self,
-        theta: Tensor,
+        latent: Tensor,
         x: Optional[Tensor] = None,
         track_gradients: bool = False,
         ode_kwargs: Optional[Dict] = None,
@@ -359,7 +360,7 @@ class VectorFieldJoint(NeuralJoint):
         This requires building and evaluating the probability flow ODE.
 
         Args:
-            theta: Parameters $\theta$.
+            latent: Latent variables.
             x: Observed data $x_o$. If None, the default $x_o$ is used.
             track_gradients: Whether the returned tensor supports tracking gradients.
                 This can be helpful for e.g. sensitivity analysis, but increases memory
@@ -367,14 +368,14 @@ class VectorFieldJoint(NeuralJoint):
             ode_kwargs: Additional keyword arguments for the ODE solver.
 
         Returns:
-            `(len(θ),)`-shaped log posterior probability $\log p(\theta|x)$ for θ in the
+            `(len(θ),)`-shaped log posterior probability $\log p(latent|x)$ for θ in the
             support of the prior, -∞ (corresponding to 0 probability) outside.
         """
         self.potential_fn.set_x(self._x_else_default_x(x), **(ode_kwargs or {}))
 
-        theta = ensure_theta_batched(torch.as_tensor(theta))
+        latent = ensure_latent_batched(torch.as_tensor(latent))
         return self.potential_fn(
-            theta.to(self._device),
+            latent.to(self._device),
             track_gradients=track_gradients,
         )
 
@@ -391,9 +392,12 @@ class VectorFieldJoint(NeuralJoint):
         max_sampling_batch_size: int = 10000,
         show_progress_bars: bool = True,
     ) -> Tensor:
-        r"""Given a batch of observations [observed_1, ..., observed_B] this function
-        samples from a joint $p(latent|observed_1)$, ... ,$p(latent|observed)$, in
-        a batched (i.e. vectorized) manner.
+        r"""Given a batch of observed variables [observed_1, ..., observed_B] this
+        function samples from a joint $p(latent|observed_1)$, ... ,$p(latent|observed)$,
+        in a batched (i.e. vectorized) manner.
+
+        Equivalently, we call observed as `x`, thus, some methods may report
+            $p(latent|x)$ equivalently as $p(latent|observed)
 
         Args:
             sample_shape: Desired shape of samples that are drawn from the posterior
@@ -547,10 +551,12 @@ class VectorFieldJoint(NeuralJoint):
             else:
                 raise ValueError
 
+            # ? Will this work for Simformer too? Inside the function they
+            # ? mention `theta`, not `latent`
             self._map = gradient_ascent(
                 potential_fn=callable_potential_fn,
                 inits=inits,
-                theta_transform=self.theta_transform,
+                theta_transform=self.latent_transform,
                 num_iter=num_iter,
                 num_to_optimize=num_to_optimize,
                 learning_rate=learning_rate,

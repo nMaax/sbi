@@ -10,32 +10,38 @@ import torch.distributions.transforms as torch_tf
 from torch import Tensor
 
 from sbi.inference.potentials.base_potential import (
-    BasePotential,
-    CustomPotential,
-    CustomPotentialWrapper,
+    CustomMaskedPotential,
+    CustomMaskedPotentialWrapper,
+    MaskedBasePotential,
 )
 from sbi.sbi_types import Array, Shape, TorchTransform
 from sbi.utils.sbiutils import gradient_ascent
-from sbi.utils.torchutils import ensure_theta_batched, process_device
+from sbi.utils.torchutils import ensure_latent_batched, process_device
 from sbi.utils.user_input_checks import process_x
 
 
 class NeuralJoint:
-    r"""Joint :math:`p(latent|observed)` with `log_prob()` and `sample()` methods."""
+    r"""
+    Joint :math:`p(latent|observed)` with `log_prob()` and `sample()` methods.
+
+    Equivalently, we call observed as `x`, thus, some methods may report
+        $p(latent|x)$ equivalently as $p(latent|observed)
+    """
 
     def __init__(
         self,
-        potential_fn: Union[BasePotential, CustomPotential],
-        theta_transform: Optional[TorchTransform] = None,
+        potential_fn: Union[MaskedBasePotential, CustomMaskedPotential],
+        latent_transform: Optional[TorchTransform] = None,
         device: Optional[Union[str, torch.device]] = None,
         x_shape: Optional[torch.Size] = None,
     ):
         """
         Args:
             potential_fn: The potential function from which to draw samples. Must be a
-                `BasePotential` or a `Callable` which takes `theta` and `x_o` as inputs.
-            theta_transform: Transformation that will be applied during sampling.
-                Allows to perform, e.g. MCMC in unconstrained space.
+                `BasePotential` or a `Callable` which takes `inputs`,
+                `conditioning_mask` and `edge_mask` as inputs.
+            latent_transform: Transformation that will be applied during sampling.
+                 Allows to perform, e.g. MCMC in unconstrained space.
             device: Training device, e.g., "cpu", "cuda" or "cuda:0". If None,
                 `potential_fn.device` is used.
             x_shape: Deprecated, should not be passed.
@@ -48,9 +54,9 @@ class NeuralJoint:
             )
 
         # Wrap custom potential functions to adhere to the `BasePotential` interface.
-        if not isinstance(potential_fn, BasePotential):
+        if not isinstance(potential_fn, MaskedBasePotential):
             potential_device = "cpu" if device is None else device
-            potential_fn = CustomPotentialWrapper(
+            potential_fn = CustomMaskedPotentialWrapper(
                 potential_fn, prior=None, x_o=None, device=potential_device
             )
 
@@ -58,12 +64,12 @@ class NeuralJoint:
 
         self.potential_fn = potential_fn
 
-        if theta_transform is None:
-            self.theta_transform = torch_tf.IndependentTransform(
+        if latent_transform is None:
+            self.latent_transform = torch_tf.IndependentTransform(
                 torch_tf.identity_transform, reinterpreted_batch_ndims=1
             )
         else:
-            self.theta_transform = theta_transform
+            self.latent_transform = latent_transform
 
         self._map = None
         self._purpose = ""
@@ -74,24 +80,38 @@ class NeuralJoint:
         self._x = self.potential_fn.return_x_o()
 
     def potential(
-        self, theta: Tensor, x: Optional[Tensor] = None, track_gradients: bool = False
+        self,
+        latent: Tensor,
+        condition_mask: Tensor,
+        edge_mask: Tensor,
+        x: Optional[Tensor] = None,
+        track_gradients: bool = False,
     ) -> Tensor:
-        r"""Evaluates $\theta$ under the potential that is used to sample the posterior.
+        r"""Evaluates latent variables under the potential that is used to
+        sample the joint distribution.
 
-        The potential is the unnormalized log-probability of $\theta$ under the
-        posterior.
+        The potential is the unnormalized log-probability of latent varibles
+        under the joint distribution.
 
         Args:
-            theta: Parameters $\theta$.
+            latent: Latent variables.
             track_gradients: Whether the returned tensor supports tracking gradients.
                 This can be helpful for e.g. sensitivity analysis, but increases memory
                 consumption.
         """
         self.potential_fn.set_x(self._x_else_default_x(x))
 
-        theta = ensure_theta_batched(torch.as_tensor(theta))
+        # ! Be sure this do not break shapes, as you work by different assumptions
+        # ! I made an equivalent functions as `ensure_latent_batched`, just with
+        # ! `theta` renamed in latent, maybe a unificiation of the two should be
+        # ! desirable?
+        latent = ensure_latent_batched(torch.as_tensor(latent))
+
         return self.potential_fn(
-            theta.to(self._device), track_gradients=track_gradients
+            latent.to(self._device),
+            condition_mask.to(self._device),
+            edge_mask.to(self._device),
+            track_gradients=track_gradients,
         )
 
     @abstractmethod
@@ -104,7 +124,7 @@ class NeuralJoint:
         mcmc_parameters: Optional[Dict[str, Any]] = None,
     ) -> Tensor:
         """See child classes for docstring."""
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def sample_batched(
@@ -115,7 +135,7 @@ class NeuralJoint:
         show_progress_bars: bool = True,
     ) -> Tensor:
         """See child classes for docstring."""
-        pass
+        raise NotImplementedError
 
     @property
     def default_x(self) -> Optional[Tensor]:
@@ -155,7 +175,7 @@ class NeuralJoint:
     def _x_else_default_x(self, x: Optional[Array]) -> Tensor:
         if x is not None:
             # New x, reset posterior sampler.
-            self._posterior_sampler = None
+            self._joint_sampler = None
             return process_x(x, x_event_shape=None)
         elif self.default_x is None:
             raise ValueError(
@@ -191,7 +211,7 @@ class NeuralJoint:
         return gradient_ascent(
             potential_fn=self.potential_fn,
             inits=inits,
-            theta_transform=self.theta_transform,
+            theta_transform=self.latent_transform,
             num_iter=num_iter,
             num_to_optimize=num_to_optimize,
             learning_rate=learning_rate,
@@ -214,9 +234,10 @@ class NeuralJoint:
         r"""Returns the maximum-a-posteriori estimate (MAP).
 
         The MAP is obtained by running gradient
-        ascent from a given number of starting positions (samples from the posterior
-        with the highest log-probability). After the optimization is done, we select the
-        parameter set that has the highest log-probability after the optimization.
+        ascent from a given number of starting positions (samples from the joint
+        distribution with the highest log-probability).
+        After the optimization is done, we select the parameter set that has the
+        highest log-probability after the optimization.
 
         Warning: The default values used by this function are not well-tested. They
         might require hand-tuning for the problem at hand.
