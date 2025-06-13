@@ -56,3 +56,5 @@ MaskedVectorFieldJoint(MaskedNeuralJoint) # Wraps the ConditionalScoreEstimator 
 sbi > inference > joints > base_joint.py
 MaskedNeuralJoint
 	- ...
+
+On the other hand, MaskedVectorFieldJoint is instead based also on a VectorFieldBasedPotential and a Diffuser, which I also must adapt to my masked case
