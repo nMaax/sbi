@@ -15,6 +15,7 @@ from torch.utils.tensorboard.writer import SummaryWriter
 
 from sbi import utils as utils
 from sbi.inference import MaskedNeuralInference, NeuralInference
+from sbi.inference.joints.vector_field_joint import MaskedVectorFieldJoint
 from sbi.inference.posteriors import (
     DirectPosterior,
 )
@@ -143,7 +144,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
     def _build_default_nn_fn(self, **kwargs) -> MaskedVectorFieldEstimatorBuilder:
         pass  # ? Why pass? Shouldn't be a "Not implemented error" be more appropriate?
 
-    # ? isn't this doing (almost) the same as defined in the parent class?
+    # ? Isn't this doing (almost) the same as defined in the parent class?
     def append_simulations(
         self,
         inputs: Tensor,
@@ -262,8 +263,6 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         through a continuous transformation from the base noise distribution to
         the target.
 
-        NOTE: This method is common for Simformer method.
-
         The denoising score matching loss has a high
         variance, which makes it more difficult to detect converegence. To reduce this
         variance, we evaluate the validation loss at a fixed set of times. We also use
@@ -366,7 +365,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
                 edge_masks[self.train_indices].to("cpu"),
             )
 
-            #! Are we sure about this?
+            # TODO adapt with masking
             # test_posterior_net_for_multi_d_x(
             #     self._neural_net,
             #     inputs,
@@ -608,7 +607,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
 
         return converged
 
-    def _build_joint(
+    def _build_arbitrary_joint(
         self,
         conditional_mask: Tensor,
         edge_mask: Tensor,
@@ -617,42 +616,6 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         sample_with: str = "sde",
         **kwargs,
     ):
-        # TODO quick implementation for debugging
-        # In the future we could call _build_posterior
-        # as build_join(conditionig_mask=posterior_mask)
-        pass
-
-    # TODO Could be kept, while also making _build_joint()
-    def _build_posterior(
-        self,
-        vector_field_estimator: Optional[MaskedConditionalVectorFieldEstimator] = None,
-        prior: Optional[Distribution] = None,
-        sample_with: str = "sde",
-        **kwargs,
-    ) -> VectorFieldPosterior:
-        r"""Build posterior from the vector field estimator.
-
-        For NPSE, the posterior distribution that is returned here implements the
-        following functionality over the raw neural density estimator:
-        - correct the calculation of the log probability such that it compensates for
-            the leakage.
-        - reject samples that lie outside of the prior bounds.
-
-        Args:
-            vector_field_estimator: The vector field estimator that the posterior
-                is based on. If `None`, use the latest vector field estimator that was
-                trained.
-            prior: Prior distribution.
-            sample_with: Method to use for sampling from the posterior. Can be one of
-                'sde' (default) or 'ode'. The 'sde' method uses the vector field to
-                do a Langevin diffusion step, while the 'ode' solves a probabilistic ODE
-                with a numerical ODE solver.
-            **kwargs: Additional keyword arguments passed to
-                `VectorFieldBasedPotential`.
-
-        Returns:
-            Posterior $p(\theta|x)$  with `.sample()` and `.log_prob()` methods.
-        """
         if prior is None:
             cls_name = self.__class__.__name__
             assert self._prior is not None, (
@@ -673,7 +636,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
             device = str(next(vector_field_estimator.parameters()).device)
 
         # ? Should I do a MaskedVectorFieldPosterior?
-        posterior = VectorFieldPosterior(
+        joint = MaskedVectorFieldJoint(
             vector_field_estimator,  # TODO
             prior,
             device=device,
@@ -681,21 +644,11 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
             **kwargs,
         )
 
-        self._posterior = posterior
+        self._joint = joint
         # Store models at end of each round.
-        self._model_bank.append(deepcopy(self._posterior))
+        self._model_bank.append(deepcopy(self._joint))
 
-        return deepcopy(self._posterior)
-
-    def _loss_proposal_posterior(
-        self,
-        theta: Tensor,
-        x: Tensor,
-        masks: Tensor,
-        proposal: Optional[Any],
-    ) -> Tensor:
-        cls_name = self.__class__.__name__
-        raise NotImplementedError(f"Multi-round {cls_name} is not yet implemented.")
+        return deepcopy(self._joint)
 
     def _loss(
         self,

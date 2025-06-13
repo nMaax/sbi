@@ -156,7 +156,7 @@ class MaskedNeuralInference(ABC):
         check_if_prior_on_device(self._device, prior)
         self._prior = prior
 
-        self._posterior = None
+        self._joint = None
         self._neural_net = None
         self._inputs_shape = None
 

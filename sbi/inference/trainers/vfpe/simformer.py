@@ -9,12 +9,6 @@ from torch.utils.tensorboard.writer import SummaryWriter
 from sbi.inference.arbitrary_distributions.vector_field_distribution import (
     MaskedVectorFieldDistribution,
 )
-from sbi.inference.likelihoods.vector_field_likelihood import (
-    MaskedVectorFieldLikelihood,
-)
-from sbi.inference.posteriors.vector_field_posterior import (
-    MaskedVectorFieldPosterior,
-)
 from sbi.inference.trainers.vfpe.base_vf_inference import (
     MaskedVectorFieldEstimatorBuilder,
     MaskedVectorFieldInference,
@@ -118,77 +112,6 @@ class Simformer(MaskedVectorFieldInference):
             Conditional distribution of latent nodes given the observed nodes
             and the edge structure.  With `.sample()` and `.log_prob()` methods.
         """
-        return None
-
-    def build_posterior(
-        self,
-        vector_field_estimator: Optional[MaskedConditionalVectorFieldEstimator] = None,
-        prior: Optional[Distribution] = None,
-        sample_with: str = "sde",
-        **kwargs,
-    ) -> MaskedVectorFieldPosterior:
-        r"""Build posterior from the vector field estimator.
-
-        Args:
-            vector_field_estimator: The vector field estimator that the posterior is
-                based on. If `None`, use the latest vector field estimator that was
-                trained.
-            prior: Prior distribution (unused).
-            sample_with: Method to use for sampling from the posterior. Can only be
-                'sde' (default).
-            **kwargs: Additional keyword arguments passed to
-                `VectorFieldBasedPotential`.
-
-        Returns:
-            Posterior $p(\theta|x)$  with `.sample()` and `.log_prob()` methods.
-        """
-        conditioning_mask = (...,)
-        edge_mask = (...,)
-
-        return MaskedVectorFieldPosterior(
-            self.build_arbitrary_joint(
-                conditioning_mask=conditioning_mask,
-                edge_mask=edge_mask,
-                vector_field_estimator=vector_field_estimator,
-                prior=prior,
-                sample_with=sample_with,
-                **kwargs,
-            )
-        )
-
-    def build_likelihood(
-        self,
-        vector_field_estimator: Optional[MaskedConditionalVectorFieldEstimator] = None,
-        prior: Optional[Distribution] = None,
-        sample_with: str = "sde",
-        **kwargs,
-    ) -> MaskedVectorFieldLikelihood:
-        r"""Build likelihood from the vector field estimator.
-
-        Args:
-            vector_field_estimator: The vector field estimator that the posterior is
-                based on. If `None`, use the latest vector field estimator that was
-                trained.
-            prior: Prior distribution (unused).
-            sample_with: Method to use for sampling from the posterior. Can only be
-                'sde' (default).
-            **kwargs: Additional keyword arguments passed to
-                `VectorFieldBasedPotential`.
-
-        Returns:
-            Likelihood $p(x|\theta)$  with `.sample()` and `.log_prob()` methods.
-        """
-
-        conditioning_mask = (...,)
-        edge_mask = (...,)
-
-        return MaskedVectorFieldLikelihood(
-            self.build_arbitrary_joint(
-                conditioning_mask=conditioning_mask,
-                edge_mask=edge_mask,
-                vector_field_estimator=vector_field_estimator,
-                prior=prior,
-                sample_with=sample_with,
-                **kwargs,
-            )
+        return self._build_arbitrary_joint(
+            ...,
         )
