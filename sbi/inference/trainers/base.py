@@ -270,38 +270,7 @@ class MaskedNeuralInference(ABC):
         Returns:
             NeuralInference object (returned so that this function is chainable).
         """
-
-        is_valid_x, num_nans, num_infs = handle_invalid_x(inputs, exclude_invalid_x)
-
-        inputs = inputs[is_valid_x]
-        conditioning_masks = conditioning_masks[is_valid_x]
-        edge_masks = edge_masks[is_valid_x]
-
-        # Check for problematic z-scoring
-        # ? Should I add simformer among these warnings and checks?
-        warn_if_zscoring_changes_data(inputs)
-        nle_nre_apt_msg_on_invalid_x(
-            num_nans, num_infs, exclude_invalid_x, algorithm or type(self).__name__
-        )
-
-        if data_device is None:
-            data_device = self._device
-
-        # TODO Skip, as we only have inputs (could be done later)
-        # theta, x = validate_theta_and_x(
-        #     theta, x, data_device=data_device, training_device=self._device
-        # )
-
-        prior_masks = mask_sims_from_prior(int(from_round), inputs.size(0))
-
-        self._inputs_roundwise.append(inputs)
-        self._conditioning_masks_roundwise.append(conditioning_masks)
-        self._edge_masks_roundwise.append(edge_masks)
-        self._prior_masks.append(prior_masks)
-
-        self._data_round_index.append(int(from_round))
-
-        return self
+        raise NotImplementedError
 
     @abstractmethod
     def train(
@@ -318,6 +287,7 @@ class MaskedNeuralInference(ABC):
         retrain_from_scratch: bool = False,
         show_train_summary: bool = False,
     ) -> NeuralPosterior:
+        """"""
         raise NotImplementedError
 
     def get_dataloaders(
@@ -390,6 +360,7 @@ class MaskedNeuralInference(ABC):
 
         return train_loader, val_loader
 
+    @abstractmethod
     def _converged(self, epoch: int, stop_after_epochs: int) -> bool:
         """Return whether the training converged yet and save best model state so far.
 
@@ -402,25 +373,7 @@ class MaskedNeuralInference(ABC):
         Returns:
             Whether the training has stopped improving, i.e. has converged.
         """
-        converged = False
-
-        assert self._neural_net is not None
-        neural_net = self._neural_net
-
-        # (Re)-start the epoch count with the first epoch or any improvement.
-        if epoch == 0 or self._val_loss < self._best_val_loss:
-            self._best_val_loss = self._val_loss
-            self._epochs_since_last_improvement = 0
-            self._best_model_state_dict = deepcopy(neural_net.state_dict())
-        else:
-            self._epochs_since_last_improvement += 1
-
-        # If no validation improvement over many epochs, stop training.
-        if self._epochs_since_last_improvement > stop_after_epochs - 1:
-            neural_net.load_state_dict(self._best_model_state_dict)
-            converged = True
-
-        return converged
+        raise NotImplementedError
 
     def _default_summary_writer(self) -> SummaryWriter:
         """Return summary writer logging to method- and simulator-specific directory."""

@@ -18,7 +18,7 @@ from sbi.neural_nets.factory import simformer_builder
 
 
 class Simformer(MaskedVectorFieldInference):
-    """Simformer as in Gloeckler et al.
+    """Simformer as in Gloeckler et al. (2024)
 
     Instead of sampling only from Posterior or Likelihood, Simformer is able
     to sample from any arbitrary joint conditional distribution.
@@ -50,7 +50,7 @@ class Simformer(MaskedVectorFieldInference):
         r"""Initialize Simformer.
 
         Args:
-            prior: Prior distribution. (Ignored, only for compatibility)
+            prior: Prior distribution. (Ignored, for compatibility only)
             vf_estimator: Neural network architecture for the
                 vector field estimator. Can be a string (e.g., `'simformer_standard'`
                 for a basic Simformer block or `'simformer_dit'` for a DiT-style block)
@@ -115,3 +115,9 @@ class Simformer(MaskedVectorFieldInference):
         return self._build_arbitrary_joint(
             ...,
         )
+
+    def build_posterior():
+        pass
+
+    def build_likelihood():
+        pass

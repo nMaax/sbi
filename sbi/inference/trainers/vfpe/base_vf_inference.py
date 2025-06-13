@@ -142,9 +142,13 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
 
     @abstractmethod
     def _build_default_nn_fn(self, **kwargs) -> MaskedVectorFieldEstimatorBuilder:
-        pass  # ? Why pass? Shouldn't be a "Not implemented error" be more appropriate?
+        # ? Why was it originally pass? Shouldn't be a NotImplementedError
+        # ? be more appropriate?
+        raise NotImplementedError
 
-    # ? Isn't this doing (almost) the same as defined in the parent class?
+    # ? Having a look at the posterior counterpars
+    # ? Wasn't the parent class doing the same as this, but under @abstract?
+    # ? How should I implement this? (for now it is a NotImplementedError on parent)
     def append_simulations(
         self,
         inputs: Tensor,
@@ -186,6 +190,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
             MaskedVectorFieldInference object
                 (returned so that this function is chainable).
         """
+
         inference_name = self.__class__.__name__
         assert proposal is None, (
             f"Multi-round {inference_name} is not yet implemented. "
@@ -234,9 +239,9 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         self._proposal_roundwise.append(proposal)
 
         if self._prior is None or isinstance(self._prior, ImproperEmpirical):
-            theta_prior = self.get_simulations()[0].to(self._device)
+            inputs_prior = self.get_simulations()[0].to(self._device)
             self._prior = ImproperEmpirical(
-                theta_prior, ones(theta_prior.shape[0], device=self._device)
+                inputs_prior, ones(inputs_prior.shape[0], device=self._device)
             )
 
         return self
@@ -389,7 +394,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
             )
         assert isinstance(
             validation_times, Tensor
-        )  # let pyright know validation_times is a Tensor.
+        )  # Let pyright know validation_times is a Tensor.
 
         if not resume_training:
             self.optimizer = Adam(list(self._neural_net.parameters()), lr=learning_rate)
@@ -410,7 +415,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
                     inputs_batch,
                     conditioning_masks_batch,
                     edge_masks_batch,
-                    masks_batch,
+                    prior_masks_batch,
                 ) = (
                     batch[0].to(self._device),
                     batch[1].to(self._device),
@@ -422,7 +427,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
                     inputs=inputs_batch,
                     conditioning_masks=conditioning_masks_batch,
                     edge_masks=edge_masks_batch,
-                    masks=masks_batch,
+                    masks=prior_masks_batch,
                     proposal=proposal,
                     calibration_kernel=calibration_kernel,
                     force_first_round_loss=force_first_round_loss,
@@ -466,7 +471,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
                         inputs_batch,
                         conditioning_masks_batch,
                         edge_masks_batch,
-                        masks_batch,
+                        prior_masks_batch,
                     ) = (
                         batch[0].to(self._device),
                         batch[1].to(self._device),
@@ -483,8 +488,8 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
                     inputs_batch = inputs_batch.repeat(
                         times_batch, *([1] * (inputs_batch.ndim - 1))
                     )
-                    masks_batch = masks_batch.repeat(
-                        times_batch, *([1] * (masks_batch.ndim - 1))
+                    prior_masks_batch = prior_masks_batch.repeat(
+                        times_batch, *([1] * (prior_masks_batch.ndim - 1))
                     )
 
                     # This will repeat the validation times for each batch in the
@@ -498,7 +503,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
                         inputs=inputs_batch,
                         conditioning_masks=conditioning_masks_batch,
                         edge_masks=edge_masks_batch,
-                        masks=masks_batch,
+                        masks=prior_masks_batch,
                         proposal=proposal,
                         calibration_kernel=calibration_kernel,
                         times=validation_times_rep,
@@ -545,6 +550,8 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
 
         return deepcopy(self._neural_net)
 
+    # ? Also this is already implemented in parent class, should I rather define that
+    # ? as abstract?
     def _converged(self, epoch: int, stop_after_epochs: int) -> bool:
         """Return whether the training converged yet and save best model state so far.
 
