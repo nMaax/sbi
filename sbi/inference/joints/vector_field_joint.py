@@ -13,7 +13,9 @@ from sbi.inference.potentials.vector_field_potential import (
     VectorFieldBasedPotential,
     vector_field_estimator_based_potential,
 )
-from sbi.neural_nets.estimators.base import ConditionalVectorFieldEstimator
+from sbi.neural_nets.estimators.base import (
+    MaskedConditionalVectorFieldEstimator,
+)
 from sbi.neural_nets.estimators.shape_handling import (
     reshape_to_batch_event,
 )
@@ -47,7 +49,7 @@ class VectorFieldJoint(NeuralJoint):
 
     def __init__(
         self,
-        vector_field_estimator: ConditionalVectorFieldEstimator,
+        vector_field_estimator: MaskedConditionalVectorFieldEstimator,
         prior: Distribution,  # type: ignore
         max_sampling_batch_size: int = 10_000,
         device: Optional[Union[str, torch.device]] = None,
@@ -155,7 +157,7 @@ class VectorFieldJoint(NeuralJoint):
         sample_with: Optional[str] = None,
         show_progress_bars: bool = True,
     ) -> Tensor:
-        r"""Return samples from posterior distribution $p(\theta|x)$.
+        r"""Return samples from joint distribution $p(latent|observed)$.
 
         Args:
             sample_shape: Shape of the samples to be drawn.
@@ -254,7 +256,7 @@ class VectorFieldJoint(NeuralJoint):
         max_sampling_batch_size: int = 10_000,
         show_progress_bars: bool = True,
     ) -> Tensor:
-        r"""Return samples from posterior distribution $p(\theta|x)$.
+        r"""Return samples from joint distribution $p(latent|observed)$.
 
         NOTE: this method can be unsupported for some vector field estimators, e.g.,
         if the vector field estimator was trained with a custom flow matching routine
@@ -329,6 +331,8 @@ class VectorFieldJoint(NeuralJoint):
         r"""
         Return samples from posterior distribution with probability flow ODE.
 
+        ODE is currently not supported for Joint Distribution sampling
+
         This builds the probability flow ODE and then samples from the corresponding
         flow.
 
@@ -341,13 +345,7 @@ class VectorFieldJoint(NeuralJoint):
             Samples from the approximated posterior distribution
                 :math:`\theta \sim p(\theta|x)`.
         """
-        num_samples = torch.Size(sample_shape).numel()
-
-        samples = self.potential_fn.neural_ode(self.potential_fn.x_o, **kwargs).sample(
-            torch.Size((num_samples,))
-        )
-
-        return samples
+        raise NotImplementedError
 
     def log_prob(
         self,
