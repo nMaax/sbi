@@ -350,7 +350,7 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
         r"""Forward pass of the score estimator.
 
         Args:
-            input: Input variable :math:`\theta_t`.
+            input: Input variables.
 
         Raises:
             NotImplementedError: This method should be implemented by sub-classes.

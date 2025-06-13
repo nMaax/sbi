@@ -15,7 +15,7 @@ from torch.utils.tensorboard.writer import SummaryWriter
 
 from sbi import utils as utils
 from sbi.inference import MaskedNeuralInference, NeuralInference
-from sbi.inference.joints.vector_field_joint import MaskedVectorFieldJoint
+from sbi.inference.joints.vector_field_joint import VectorFieldJoint
 from sbi.inference.posteriors import (
     DirectPosterior,
 )
@@ -142,8 +142,8 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
 
     @abstractmethod
     def _build_default_nn_fn(self, **kwargs) -> MaskedVectorFieldEstimatorBuilder:
-        # ? Why was it originally pass? Shouldn't be a NotImplementedError
-        # ? be more appropriate?
+        # ? Why was it originally `pass`?
+        # ? Shouldn't be a NotImplementedError be more appropriate?
         raise NotImplementedError
 
     # ? Having a look at the posterior counterpars
@@ -643,8 +643,12 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
             device = str(next(vector_field_estimator.parameters()).device)
 
         # ? Should I do a MaskedVectorFieldPosterior?
-        joint = MaskedVectorFieldJoint(
-            vector_field_estimator,  # TODO
+        # ! Not MaskedVectorFieldJoint, just VectorFieldJoint
+        # ! Since after init the edge and cond masks are set
+        joint = VectorFieldJoint(
+            conditional_mask,
+            edge_mask,
+            vector_field_estimator,
             prior,
             device=device,
             sample_with=sample_with,
@@ -653,6 +657,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
 
         self._joint = joint
         # Store models at end of each round.
+        # TODO: Should expand the model bank for different condition and edge maks
         self._model_bank.append(deepcopy(self._joint))
 
         return deepcopy(self._joint)
