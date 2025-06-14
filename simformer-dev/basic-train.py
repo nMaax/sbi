@@ -6,7 +6,8 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import Dataset, DataLoader
 
-from simformer import Simformer, MaskedVEScoreEstimator
+from sbi.neural_nets.estimators.score_estimator import MaskedVEScoreEstimator # type: ignore
+from sbi.neural_nets.net_builders.vector_field_nets import Simformer, MaskedSimformerBlock, MaskedDiTBlock # type: ignore
 
 
 # %%

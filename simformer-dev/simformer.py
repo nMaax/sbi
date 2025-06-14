@@ -1,312 +1,60 @@
-from typing import Callable, Optional, Union
-import math
-from typing import Callable, Union
-
 import torch
-from torch import Tensor, nn
 
-from sbi.utils.vector_field_utils import MaskedVectorFieldNet
-from sbi.neural_nets.estimators.score_estimator import MaskedConditionalScoreEstimator
-from sbi.neural_nets.net_builders.vector_field_nets import DiTBlock
-from sbi.neural_nets.net_builders.vector_field_nets import RandomFourierTimeEmbedding
+from sbi.neural_nets.estimators.score_estimator import MaskedVEScoreEstimator # type: ignore
+from sbi.neural_nets.net_builders.vector_field_nets import Simformer, MaskedSimformerBlock, MaskedDiTBlock # type: ignore
 
+def _test_masked_simformer_block():
+    print("\n--- Testing Simformer Block ---")
 
-class MaskedVEScoreEstimator(MaskedConditionalScoreEstimator):
-    def __init__(
-        self,
-        net: Union[MaskedVectorFieldNet, nn.Module],
-        input_shape: torch.Size,
-        embedding_net: nn.Module = nn.Identity(),
-        weight_fn: Union[str, Callable] = "max_likelihood",
-        sigma_min: float = 1e-4,
-        sigma_max: float = 10.0,
-        mean_0: Union[Tensor, float] = 0.0,
-        std_0: Union[Tensor, float] = 1.0,
-    ) -> None:
-        self.sigma_min = sigma_min
-        self.sigma_max = sigma_max
-        super().__init__(
-            net,
-            input_shape,
-            embedding_net=embedding_net,
-            weight_fn=weight_fn,
-            mean_0=mean_0,
-            std_0=std_0,
-        )
+    # Define dummy parameters for Simformer Block initialization
+    dim_hidden_block = 128  # Output dimension of the block (same as input for stacked blocks)
+    dim_t = 16 # Dimension of the time embedding
+    num_heads = 8 # Number of attention heads
 
-    def mean_t_fn(self, times: Tensor) -> Tensor:
-        """Conditional mean function for variance exploding SDEs, which is always 1.
-
-        Args:
-            times: SDE time variable in [0,1].
-
-        Returns:
-            Conditional mean at a given time.
-        """
-        phi = torch.ones_like(times, device=times.device)
-        for _ in range(len(self.input_shape)):
-            phi = phi.unsqueeze(-1)
-        return phi
-
-    def std_fn(self, times: Tensor) -> Tensor:
-        """Standard deviation function for variance exploding SDEs.
-
-        Args:
-            times: SDE time variable in [0,1].
-
-        Returns:
-            Standard deviation at a given time.
-        """
-        std = self.sigma_min * (self.sigma_max / self.sigma_min) ** times
-        for _ in range(len(self.input_shape)):
-            std = std.unsqueeze(-1)
-        return std
-
-    def _sigma_schedule(self, times: Tensor) -> Tensor:
-        """Geometric sigma schedule for variance exploding SDEs.
-
-        Args:
-            times: SDE time variable in [0,1].
-
-        Returns:
-            Sigma schedule at a given time.
-        """
-        return self.sigma_min * (self.sigma_max / self.sigma_min) ** times
-
-    def drift_fn(self, input: Tensor, times: Tensor) -> Tensor:
-        """Drift function for variance exploding SDEs.
-
-        Args:
-            input: Original data, x0.
-            times: SDE time variable in [0,1].
-
-        Returns:
-            Drift function at a given time.
-        """
-        return torch.zeros_like(input)
-
-    def diffusion_fn(self, input: Tensor, times: Tensor) -> Tensor:
-        """Diffusion function for variance exploding SDEs.
-
-        Args:
-            input: Original data, x0.
-            times: SDE time variable in [0,1].
-
-        Returns:
-            Diffusion function at a given time.
-        """
-        g = self._sigma_schedule(times) * math.sqrt(
-            (2 * math.log(self.sigma_max / self.sigma_min))
-        )
-
-        return g
-
-class MaskedSimformerBlock(nn.Module):
-    def __init__(
-        self,
-        hidden_dim,
-        cond_dim,
+    # Create Simformer Block instance
+    masked_simformer_block = MaskedSimformerBlock(
+        dim_hidden_block,
+        dim_t,
         num_heads,
-        mlp_ratio=2,
-        activation=nn.GELU
-    ):
-        super().__init__()
-        self.norm1 = nn.LayerNorm(hidden_dim)
-        self.attn = nn.MultiheadAttention(
-            embed_dim=hidden_dim,
-            num_heads=num_heads,
-            batch_first=True
-        )
-        self.norm2 = nn.LayerNorm(hidden_dim)
-        self.mlp_fc1 = nn.Linear(hidden_dim, int(hidden_dim * mlp_ratio))
-        self.mlp_act = activation()
-        self.mlp_time_proj = nn.Linear(cond_dim, int(hidden_dim * mlp_ratio))
-        self.mlp_fc2 = nn.Linear(int(hidden_dim * mlp_ratio), hidden_dim)
+    )
+    print(f"MaskedSimformerBlock initialized: {masked_simformer_block}")
 
-    def forward(self, x, cond, mask):
-        B, T, D = x.shape
+    # Define dummy input tensor shapes and values
+    batch_size = 4
+    sequence_length = 15 # T from Simformer (m_theta + n_x)
 
-        # First LayerNorm and self-attention with masking
-        x_norm = self.norm1(x)
+    # tokens (after init projection): [B, T, dim_hidden_block]
+    tokens = torch.randn(batch_size, sequence_length, dim_hidden_block)
+    # t_h: [B, dim_t] (time embedding)
+    t_h = torch.randn(batch_size, dim_t)
 
-        if mask is not None:
-            if mask.dim() == 3:
-                # mask: [B, T, T] -> [B * num_heads, T, T]
-                B, T, _ = mask.shape
-                mask = mask.unsqueeze(1).expand(B, self.attn.num_heads, T, T).reshape(B * self.attn.num_heads, T, T)
+    edge_mask = None # Not used in this dummy DiTBlock
 
-        attn_out, _ = self.attn(
-            query=x_norm,
-            key=x_norm,
-            value=x_norm,
-            attn_mask=mask
-        )
-        x = x + attn_out
+    print(f"Input shapes: tokens={tokens.shape}, t_h={t_h.shape}")
 
-        # Second LayerNorm and MLP with time conditioning
-        x_norm = self.norm2(x)
-        x_mlp = self.mlp_fc1(x_norm)
-        time_emb = self.mlp_time_proj(cond).unsqueeze(1)
-        x_mlp = x_mlp + time_emb
-        x_mlp = self.mlp_act(x_mlp)
-        x_mlp = self.mlp_fc2(x_mlp)
+    # Move to GPU if available
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        masked_simformer_block.to(device)
+        tokens = tokens.to(device)
+        t_h = t_h.to(device)
+        if edge_mask:
+            edge_mask = edge_mask.to(device)
+        print(f"Moved tensors and MaskedSimformerBlock to {device}")
+    else:
+        device = torch.device("cpu")
+        print(f"Running on CPU (CUDA not available)")
 
-        x = x + x_mlp
-        return x
+    # Perform forward pass
+    output = masked_simformer_block(tokens, t_h, edge_mask)
+    print(f"MaskedSimformerBlock forward pass successful. Output shape: {output.shape}")
 
-class MaskedDiTBlock(DiTBlock):
-    def __init__(
-        self,
-        hidden_dim,
-        cond_dim,
-        num_heads,
-        mlp_ratio=2,
-        activation=nn.GELU
-    ):
-        super().__init__(hidden_dim, cond_dim, num_heads, mlp_ratio, activation)
-
-    def forward(self, x, cond, mask):
-
-        ada_params = self.ada_affine(cond)
-        attn_shift, attn_scale, attn_gate, mlp_shift, mlp_scale, mlp_gate = ada_params.chunk(6, dim=-1)
-        B, T, D = x.shape
-
-        attn_scale = attn_scale.view(B, 1, D)
-        attn_shift = attn_shift.view(B, 1, D)
-        attn_gate = attn_gate.view(B, 1, D)
-        mlp_scale = mlp_scale.view(B, 1, D)
-        mlp_shift = mlp_shift.view(B, 1, D)
-        mlp_gate = mlp_gate.view(B, 1, D)
-
-        # Adaptive LayerNorm before attention
-        x_norm = self.norm1(x)
-        x_norm = x_norm * (attn_scale + 1) + attn_shift
-
-        # Prepare attention mask
-        if mask is not None:
-            # Expand mask for multi-head attention if needed
-            if mask.dim() == 3:
-                # mask: [B, T, T] -> [B * num_heads, T, T]
-                B, T, _ = mask.shape
-                mask = mask.unsqueeze(1).expand(B, self.attn.num_heads, T, T).reshape(B * self.attn,num_heads, T, T)
-
-        # Self-attention
-        attn_out, _ = self.attn(x_norm, x_norm, x_norm, attn_mask=mask)
-        x = x + attn_gate * attn_out
-
-        # Adaptive LayerNorm before MLP
-        x_norm = self.norm2(x)
-        x_norm = x_norm * (mlp_scale + 1) + mlp_shift
-
-        # MLP
-        mlp_out = self.mlp(x_norm)
-        x = x + mlp_gate * mlp_out
-
-        return x
-
-class Simformer(MaskedVectorFieldNet):
-    def __init__(
-            self,
-            in_features,
-            num_nodes,
-            dim_val=64,
-            dim_id=32,
-            dim_cond=16,
-            dim_t=16,
-            dim_hidden=128,
-            num_blocks=4,
-            num_heads=8,
-            ada_time = False,
-        ):
-        super().__init__()
-        self.in_features = in_features # Number of features by each node (F)
-        self.num_nodes = num_nodes # Number of nodes in the DAG (T = m + n)
-        self.dim_val = dim_val # Dimension of the value token
-        self.dim_id = dim_id # Dimension of the id token
-        self.dim_cond = dim_cond # Dimension of the conditioning token
-        self.dim_t = dim_t # Dimension of the time embedding
-        self.dim_hidden = dim_hidden # Dimension of the latent space in the transformer blocks
-        self.num_blocks = num_blocks # Number of transformer blocks to stack
-        self.num_heads = num_heads # Number of attention heads per each transfrormer block
-
-        # Tokenize on val
-        #? Should this be a repeat rather than Linear?
-        self.val_linear = nn.Linear(in_features, dim_val)
-
-        # Tokenize on id
-        self.id_embedding = nn.Embedding(num_nodes, dim_id)
-
-        # Conditioning parameter
-        self.conditioning_parameter = nn.Parameter(torch.randn(1, 1, dim_cond) * 0.5)
-
-        # Time embedding
-        self.time_embedding = RandomFourierTimeEmbedding(dim_t)
-
-        # Project input tokens to hidden dim
-        self.in_proj = nn.Linear(dim_val + dim_id + dim_cond, dim_hidden)
-
-        # Transformer blocks
-        Block = MaskedDiTBlock if ada_time == True else MaskedSimformerBlock
-        self.blocks = nn.ModuleList([
-            Block(dim_hidden, dim_t, num_heads) for _ in range(num_blocks)
-        ])
-
-        # Output projection
-        self.out_linear = nn.Linear(dim_hidden, in_features)
-
-    def forward(self, inputs, t, condition_mask, edge_mask):
-
-        B, T, F = inputs.shape
-        device = inputs.device
-
-        assert t.shape == (B,), f"{B} time values must be provided for batches of size {B}"
-        assert condition_mask.shape == (B, T), "condition_mask must have the same batch size and sequence length as inputs"
-        assert edge_mask.shape == (B, T, T), "edge_mask must have same shape as the sequence length"
-
-        # Tokenize on val
-        val_h = self.val_linear(inputs) # [B, T, dim_val]
-
-        # Tokenize the nodes' id
-        ids = torch.arange(T, device=device).unsqueeze(0).expand(B, -1)  # [B, T]
-        id_h = self.id_embedding(ids)  # [B, T, dim_id]
-
-        # Conditioning
-        # conditioning_parameter: [1, 1, dim_cond]
-        # condition_mask: [B, T]
-        conditioning_h = self.conditioning_parameter.expand(B, T, self.dim_cond) * condition_mask.unsqueeze(-1)  # [B, T, dim_cond]
-
-        # Time embedding
-        #? Normalize time to [0, 1] if not already done (should I do this?)
-        #t_norm = (t - t.min()) / (t.max() - t.min() + 1e-8)
-        t_h = self.time_embedding(t)  # [B, dim_t]
-
-        # Concatenate tokens
-        tokens = torch.cat([val_h, id_h, conditioning_h], dim=-1)  # [B, T, dim_val+dim_id+dim_cond]
-        h = self.in_proj(tokens)  # [B, T, dim_hidden]
-
-        # Pass through transformer blocks
-        # Invert mask to follow Torch convention
-        # True: masked (no attention), False: allowed (attention)
-        for block in self.blocks:
-            h = block(h, t_h, ~edge_mask.bool())
-
-        # Output projection
-        #? Should this be flattened as [B, T*F]?
-        #? Answer: No, as you will use your own score estimator
-        out = self.out_linear(h)  # [B, T, F]
-        return out
-
-def _test_time_embedding():
-    print("\n--- Testing RandomFourierTimeEmbedding ---")
-
-    # Create a dummy time tensor
-    times = torch.linspace(0, 1, steps=4)
-    # Instantiate the embedding
-    emb = RandomFourierTimeEmbedding(embed_dim=8)
-    # Forward pass
-    out = emb(times)
-    assert out.shape == (4, 8), f"Expected output shape (4, 8), got {out.shape}"
-    print("RandomFourierTimeEmbedding test passed!")
+    # Assert the output shape
+    # Expected output shape: [B, T, dim_hidden_block]
+    expected_output_shape = (batch_size, sequence_length, dim_hidden_block)
+    assert output.shape == expected_output_shape, \
+        f"Expected output shape {expected_output_shape}, but got {output.shape}"
+    print("MaskedSimformerBlock output shape assertion passed!")
 
     return True
 
@@ -515,7 +263,7 @@ def _test_masked_ve_score_estimator():
 
 # Run the test when this file is executed directly
 if __name__ == "__main__":
-    _test_time_embedding()
+    _test_masked_simformer_block()
     _test_masked_dit_block()
     _test_simformer()
     _test_masked_ve_score_estimator()
