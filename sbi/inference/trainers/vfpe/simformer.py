@@ -3,6 +3,7 @@
 
 from typing import Literal, Optional, Union
 
+from torch import Tensor
 from torch.distributions import Distribution
 from torch.utils.tensorboard.writer import SummaryWriter
 
@@ -90,6 +91,8 @@ class Simformer(MaskedVectorFieldInference):
 
     def build_arbitrary_joint(
         self,
+        conditional_mask: Tensor,
+        edge_mask: Tensor,
         vector_field_estimator: Optional[MaskedConditionalVectorFieldEstimator] = None,
         prior: Optional[Distribution] = None,
         sample_with: str = "sde",
@@ -113,11 +116,26 @@ class Simformer(MaskedVectorFieldInference):
             and the edge structure.  With `.sample()` and `.log_prob()` methods.
         """
         return self._build_arbitrary_joint(
-            ...,
+            conditional_mask,
+            edge_mask,
+            vector_field_estimator,
+            prior,
+            sample_with=sample_with,
+            **kwargs,
         )
 
-    def build_posterior():
-        pass
+    def build_posterior(
+        self,
+        vector_field_estimator: Optional[MaskedConditionalVectorFieldEstimator] = None,
+        prior: Optional[Distribution] = None,
+        sample_with: str = "sde",
+    ):
+        raise NotImplementedError
 
-    def build_likelihood():
-        pass
+    def build_likelihood(
+        self,
+        vector_field_estimator: Optional[MaskedConditionalVectorFieldEstimator] = None,
+        prior: Optional[Distribution] = None,
+        sample_with: str = "sde",
+    ):
+        raise NotImplementedError
