@@ -120,6 +120,9 @@ def build_vector_field_estimator(
             **kwargs,
         )
     elif net == "simformer":
+        # ? Or should I rather make a build_simformer() factory method
+        del estimator_type  # Simformer is always 'score' type
+
         hidden_dim = (
             hidden_features if isinstance(hidden_features, int) else hidden_features[0]
         )
@@ -1446,6 +1449,8 @@ def build_simformer_network(
     """Builds a Simformer network."""
 
     del kwargs  # Unused
+    del batch_y  # Unused
+    del embedding_net  # Unused
 
     in_features = batch_x.shape[-1]
     num_nodes = batch_x.shape[1]
