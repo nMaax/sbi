@@ -6,8 +6,8 @@ from typing import Literal, Optional, Union
 from torch.distributions import Distribution
 from torch.utils.tensorboard.writer import SummaryWriter
 
-from sbi.inference.arbitrary_distributions.vector_field_distribution import (
-    MaskedVectorFieldDistribution,
+from sbi.inference.joints.vector_field_joint import (
+    VectorFieldJoint,
 )
 from sbi.inference.trainers.vfpe.base_vf_inference import (
     MaskedVectorFieldEstimatorBuilder,
@@ -94,7 +94,7 @@ class Simformer(MaskedVectorFieldInference):
         prior: Optional[Distribution] = None,
         sample_with: str = "sde",
         **kwargs,
-    ) -> MaskedVectorFieldDistribution:
+    ) -> VectorFieldJoint:
         r"""Build an arbitrary conditional joint distribution from
         the vector field estimator.
 
