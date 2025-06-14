@@ -73,6 +73,67 @@ embedding_net_warn_msg = """The passed embedding net will be moved to cpu for
                         constructing the net building function."""
 
 
+def simformer_nn(
+    model: str = "simformer",
+    sde_type: str = "ve",
+    hidden_features: int = 100,
+    num_heads: int = 4,
+    num_layers: int = 8,
+    mlp_ratio: int = 2,
+    time_embedding_dim: int = 32,
+    embedding_net: nn.Module = nn.Identity(),
+    dim_val: int = 64,
+    dim_id: int = 32,
+    dim_cond: int = 16,
+    ada_time: bool = False,
+    **kwargs: Any,
+) -> Callable:
+    kwargs = dict(
+        zip(
+            (
+                "hidden_features",
+                "num_heads",
+                "num_layers",
+                "mlp_ratio",
+                "embedding_net",
+                "time_embedding_dim",
+                "dim_val",
+                "dim_id",
+                "dim_cond",
+                "ada_time",
+                "net",
+            ),
+            (
+                hidden_features,
+                num_heads,
+                num_layers,
+                mlp_ratio,
+                check_net_device(embedding_net, "cpu", embedding_net_warn_msg),
+                time_embedding_dim,
+                dim_val,
+                dim_id,
+                dim_cond,
+                ada_time,
+                model,
+            ),
+            strict=False,
+        ),
+        **kwargs,
+    )
+
+    def build_fn(
+        batch_inputs,
+    ):
+        # Build the score matching estimator
+        return build_score_matching_estimator(
+            batch_x=batch_inputs,
+            batch_y=batch_inputs,  # Unused
+            **kwargs,
+        )
+
+    return build_fn
+
+
 def classifier_nn(
     model: str,
     z_score_theta: Optional[str] = "independent",

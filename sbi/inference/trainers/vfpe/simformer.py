@@ -15,7 +15,7 @@ from sbi.inference.trainers.vfpe.base_vf_inference import (
     MaskedVectorFieldInference,
 )
 from sbi.neural_nets.estimators import MaskedConditionalVectorFieldEstimator
-from sbi.neural_nets.factory import simformer_builder
+from sbi.neural_nets.factory import simformer_nn
 
 
 class Simformer(MaskedVectorFieldInference):
@@ -84,10 +84,9 @@ class Simformer(MaskedVectorFieldInference):
             **kwargs,
         )
 
-    # TODO: must develop the factory for Simformer
     def _build_default_nn_fn(self, **kwargs) -> MaskedVectorFieldEstimatorBuilder:
-        net_type = kwargs.pop("vector_field_estimator_builder", "simformer_standard")
-        return simformer_builder(model=net_type, **kwargs)
+        net_type = kwargs.pop("vector_field_estimator_builder", "simformer")
+        return simformer_nn(model=net_type, **kwargs)
 
     def build_arbitrary_joint(
         self,
