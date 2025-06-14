@@ -17,6 +17,7 @@ from sbi.neural_nets.estimators.shape_handling import (
     reshape_to_sample_batch_event,
 )
 from sbi.samplers.ode_solvers import build_neural_ode
+from sbi.samplers.ode_solvers.ode_builder import build_masked_neural_ode
 from sbi.sbi_types import TorchTransform
 from sbi.utils.sbiutils import mcmc_transform, within_support
 from sbi.utils.torchutils import ensure_theta_batched
@@ -127,7 +128,7 @@ class MaskedVectorFieldBasedPotential(MaskedBasePotential):
         self.iid_params = iid_params
 
         neural_ode_kwargs = neural_ode_kwargs or {}
-        self.neural_ode = build_neural_ode(
+        self.neural_ode = build_masked_neural_ode(
             self.vector_field_estimator.ode_fn,
             self.vector_field_estimator.net,
             self.vector_field_estimator.mean_base,
