@@ -646,8 +646,6 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         # ! Not MaskedVectorFieldJoint, just VectorFieldJoint
         # ! Since after init the edge and cond masks are set
         joint = VectorFieldJoint(
-            conditional_mask,
-            edge_mask,
             vector_field_estimator,
             prior,
             device=device,
