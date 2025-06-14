@@ -279,19 +279,7 @@ class MaskedVectorFieldBasedPotential(MaskedBasePotential):
             )
 
         with torch.set_grad_enabled(track_gradients):
-            if not self.x_is_iid or self._x_o.shape[0] == 1:
-                score = self.vector_field_estimator.score(
-                    input=inputs, condition=self.x_o, t=time
-                )
-            else:
-                assert self.prior is not None, "Prior is required for iid methods."
-
-                iid_method = get_iid_method(self.iid_method)
-                score_fn_iid = iid_method(
-                    self.vector_field_estimator, self.prior, **(self.iid_params or {})
-                )
-
-                score = score_fn_iid(inputs, self.x_o, time)
+            score = self.vector_field_estimator.score(input=inputs, t=time)
 
         return score
 
