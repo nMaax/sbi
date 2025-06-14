@@ -975,16 +975,17 @@ class DiTBlockWithCrossAttention(nn.Module):
 class Simformer(MaskedVectorFieldNet):
     def __init__(
         self,
-        in_features,
-        num_nodes,
-        dim_val=64,
-        dim_id=32,
-        dim_cond=16,
-        dim_t=16,
-        dim_hidden=128,
-        num_blocks=4,
-        num_heads=8,
-        ada_time=False,
+        in_features: int,
+        num_nodes: int,
+        dim_val: int = 64,
+        dim_id: int = 32,
+        dim_cond: int = 16,
+        dim_t: int = 16,
+        dim_hidden: int = 128,
+        num_blocks: int = 4,
+        num_heads: int = 8,
+        mlp_ratio: int = 2,
+        ada_time: int = False,
     ):
         super().__init__()
         self.in_features = in_features  # Number of features by each node (F)
