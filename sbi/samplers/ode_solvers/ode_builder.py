@@ -7,8 +7,29 @@ Builder for ODE solvers.
 
 from torch import Tensor, nn
 
-from sbi.samplers.ode_solvers.base import NeuralODE, NeuralODEFunc
-from sbi.samplers.ode_solvers.zuko_ode import ZukoNeuralODE
+from sbi.samplers.ode_solvers.base import (
+    MaskedNeuralODE,
+    MaskedNeuralODEFunc,
+    NeuralODE,
+    NeuralODEFunc,
+)
+from sbi.samplers.ode_solvers.zuko_ode import MaskedZukoNeuralODE, ZukoNeuralODE
+
+
+def build_masked_neural_ode(
+    f: MaskedNeuralODEFunc,
+    net: nn.Module,
+    mean_base: Tensor,
+    std_base: Tensor,
+    backend: str = "zuko",
+    t_min: float = 0.0,
+    t_max: float = 1.0,
+    **kwargs,
+) -> MaskedNeuralODE:
+    if backend == "zuko":
+        return MaskedZukoNeuralODE(f, net, mean_base, std_base, t_min, t_max, **kwargs)
+    else:
+        raise ValueError(f"Backend {backend} not supported")
 
 
 def build_neural_ode(
