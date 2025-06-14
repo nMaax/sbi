@@ -39,7 +39,7 @@ def build_vector_field_estimator(
     num_blocks: int = 5,
     num_heads: int = 4,
     mlp_ratio: int = 4,
-    net: str | nn.Module = "ada_mlp",  # "mlp", "ada_mlp", or "transformer"
+    net: str | nn.Module = "ada_mlp",  # "mlp", "ada_mlp", "transformer", or "simformer"
     **kwargs,
 ) -> Union[FlowMatchingEstimator, ConditionalScoreEstimator]:
     """Builds a vector field estimator (flow matching or score matching) with the given
@@ -109,6 +109,21 @@ def build_vector_field_estimator(
             hidden_features if isinstance(hidden_features, int) else hidden_features[0]
         )
         vectorfield_net = build_transformer_network(
+            batch_x=batch_x,
+            batch_y=batch_y,
+            hidden_features=hidden_dim,
+            num_layers=num_blocks,
+            num_heads=num_heads,
+            mlp_ratio=mlp_ratio,
+            time_embedding_dim=time_embedding_dim,
+            embedding_net=embedding_net,
+            **kwargs,
+        )
+    elif net == "simformer":
+        hidden_dim = (
+            hidden_features if isinstance(hidden_features, int) else hidden_features[0]
+        )
+        vectorfield_net = build_simformer_network(
             batch_x=batch_x,
             batch_y=batch_y,
             hidden_features=hidden_dim,
@@ -1408,6 +1423,46 @@ def build_transformer_network(
         fourier_scale=fourier_scale,
         activation=activation,
         is_x_emb_seq=is_x_emb_seq,
+    )
+
+    return vectorfield_net
+
+
+def build_simformer_network(
+    batch_x: Tensor,
+    batch_y: Tensor,
+    hidden_features: int = 100,
+    num_layers: int = 5,
+    num_heads: int = 4,
+    mlp_ratio: int = 2,
+    time_embedding_dim: int = 32,
+    embedding_net: nn.Module = nn.Identity(),
+    dim_val: int = 64,
+    dim_id: int = 32,
+    dim_cond: int = 16,
+    ada_time: bool = False,
+    **kwargs,
+) -> Simformer:
+    """Builds a Simformer network."""
+
+    del kwargs  # Unused
+
+    in_features = batch_x.shape[-1]
+    num_nodes = batch_x.shape[1]
+
+    # Create the vector field network (Simformer)
+    vectorfield_net = Simformer(
+        in_features=in_features,
+        num_nodes=num_nodes,
+        dim_val=dim_val,
+        dim_id=dim_id,
+        dim_cond=dim_cond,
+        dim_t=time_embedding_dim,
+        dim_hidden=hidden_features,
+        num_blocks=num_layers,
+        num_heads=num_heads,
+        mlp_ratio=mlp_ratio,
+        ada_time=ada_time,
     )
 
     return vectorfield_net
