@@ -145,7 +145,7 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
     def score(
         self,
         input: Tensor,  # [B, T, F]
-        time: Tensor,  # [B] or [B, 1]
+        t: Tensor,  # [B] or [B, 1]
         condition_mask: Optional[Tensor] = None,  # [B, T]
         edge_mask: Optional[Tensor] = None,  # [T, T] or [B, T, T]
     ) -> Tensor:
@@ -163,7 +163,7 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
             Score function value.
         """
         return self(
-            input=input, time=time, condition_mask=condition_mask, edge_mask=edge_mask
+            input=input, time=t, condition_mask=condition_mask, edge_mask=edge_mask
         )
 
     def loss(
@@ -478,7 +478,7 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         Returns:
             ODE flow function value at a given time.
         """
-        score = self.score(input=input, time=times)
+        score = self.score(input=input, t=times)
         f = self.drift_fn(input, times)
         g = self.diffusion_fn(input, times)
         v = f - 0.5 * g**2 * score
