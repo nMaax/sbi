@@ -1021,7 +1021,7 @@ class Simformer(MaskedVectorFieldNet):
         # Transformer blocks
         Block = MaskedDiTBlock if ada_time else MaskedSimformerBlock
         self.blocks = nn.ModuleList([
-            Block(dim_hidden, dim_t, num_heads) for _ in range(num_blocks)
+            Block(dim_hidden, dim_t, num_heads, mlp_ratio) for _ in range(num_blocks)
         ])
 
         # Output projection
