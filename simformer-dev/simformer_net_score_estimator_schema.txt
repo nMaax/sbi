@@ -1,8 +1,3 @@
-## Branching
-From merge_flow_builders_to_current_main:
-	-> simformer (actual branch for the PR)
-	-> simformer-dev (quick tests)
-
 ## Pre-existing code
 
 - `base_vf_inference.py` > `VectorFieldInference`: interface for the Inference object that will be used by the user, it orchestrates training, sampling, data storing and everything for the user, the following objects will be called by this Interface at various steps in the use of the Simformer
