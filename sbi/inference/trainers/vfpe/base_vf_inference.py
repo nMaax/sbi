@@ -359,14 +359,14 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         # arguments, which will build the neural network.
         if self._neural_net is None or retrain_from_scratch:
             # Get theta,x to initialize NN
-            inputs, conditioning_masks, edge_masks, _ = self.get_simulations(
+            inputs, condition_masks, edge_masks, _ = self.get_simulations(
                 starting_round=start_idx
             )
             # Use only training data for building the neural net (z-scoring transforms)
 
             self._neural_net = self._build_neural_net(
                 inputs[self.train_indices].to("cpu"),
-                conditioning_masks[self.train_indices].to("cpu"),
+                condition_masks[self.train_indices].to("cpu"),
                 edge_masks[self.train_indices].to("cpu"),
             )
 
@@ -378,7 +378,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
             #     edge_masks,
             # )
 
-            del inputs, conditioning_masks, edge_masks
+            del inputs, condition_masks, edge_masks
 
         # Move entire net to device for training.
         self._neural_net.to(self._device)

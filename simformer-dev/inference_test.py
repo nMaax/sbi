@@ -17,14 +17,16 @@ def simformer_simulator(num_simulations):
 
     # True for observed, False for latent.
     # Note: This mask is for a single 'input' sample. It gets broadcasted for the batch.
-    conditioning_mask_single_sample = torch.zeros(NUM_SIM_NODES, NUM_NODE_FEATURES, dtype=torch.bool)
-    conditioning_mask_single_sample[1, :] = True # Node 1 (index 1) is observed
+    condition_mask_single_sample = torch.zeros((NUM_SIM_NODES,), dtype=torch.bool)
+    condition_mask_single_sample[1] = True # Node 1 (index 1) is observed
+    condition_masks = condition_mask_single_sample.unsqueeze(0).expand(num_simulations, NUM_SIM_NODES)
 
     # True for an edge from row to column.
-    edge_mask_single_sample = torch.zeros(NUM_SIM_NODES, NUM_SIM_NODES, dtype=torch.bool)
+    edge_mask_single_sample = torch.zeros((NUM_SIM_NODES, NUM_SIM_NODES), dtype=torch.bool)
     edge_mask_single_sample[0, 1] = True # Edge from node 0 to node 1
+    edge_masks = edge_mask_single_sample.unsqueeze(0).expand(num_simulations, NUM_SIM_NODES, NUM_SIM_NODES)
 
-    return inputs_tensor, conditioning_mask_single_sample, edge_mask_single_sample
+    return inputs_tensor, condition_masks, edge_masks
 
 # %%
 
@@ -45,16 +47,16 @@ inference = Simformer(
 
 # %%
 num_simulations = 2000
-sim_inputs, sim_conditioning_mask, sim_edge_mask = simformer_simulator(num_simulations)
+sim_inputs, sim_conditioning_masks, sim_edge_masks = simformer_simulator(num_simulations)
 print("sim_inputs.shape", sim_inputs.shape) # Expected: [2000, 2, 3]
-print("sim_conditioning_mask.shape", sim_conditioning_mask.shape) # Expected: [2, 3]
-print("sim_edge_mask.shape", sim_edge_mask.shape) # Expected: [2, 2]
+print("sim_conditioning_masks.shape", sim_conditioning_masks.shape) # Expected: [2, 3]
+print("sim_edge_masks.shape", sim_edge_masks.shape) # Expected: [2, 2]
 
 # %%
 inference = inference.append_simulations(
     inputs=sim_inputs,
-    conditioning_masks=sim_conditioning_mask.unsqueeze(0).repeat(num_simulations, 1, 1), # Add batch dim and repeat
-    edge_masks=sim_edge_mask.unsqueeze(0).repeat(num_simulations, 1, 1), # Add batch dim and repeat
+    conditioning_masks=sim_conditioning_masks,
+    edge_masks=sim_edge_masks,
 )
 
 # %%
