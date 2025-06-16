@@ -1044,6 +1044,7 @@ class Simformer(MaskedVectorFieldNet):
 
         # Tokenize on val
         # ? Should this be a repeat rather than Linear?
+        # ? Answer: No
         self.val_linear = nn.Linear(in_features, dim_val)
 
         # Tokenize on id
@@ -1083,11 +1084,12 @@ class Simformer(MaskedVectorFieldNet):
         # condition_mask: [B, T]
         conditioning_h = self.conditioning_parameter.expand(
             B, T, self.dim_cond
-        ) * condition_mask.unsqueeze(-1)  # [B, T, dim_cond]
+        ) * condition_mask.unsqueeze(-1).expand(B, T, self.dim_cond)  # [B, T, dim_cond]
 
         # Time embedding
         # ? Normalize time to [0, 1] if not already done (should I do this?)
-        # t_norm = (t - t.min()) / (t.max() - t.min() + 1e-8)
+        # ? t_norm = (t - t.min()) / (t.max() - t.min() + 1e-8)
+        # ? Answer: No
         t_h = self.time_embedding(t)  # [B, dim_t]
 
         # Concatenate tokens

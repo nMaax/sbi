@@ -119,6 +119,7 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         std = self.approx_marginal_std(time)  # [B, 1, F] or broadcastable
 
         # ? Skipped, as Simformer expects time as it is, not as a level of std
+        # ? Answer: Ok
         # time_enc = self.std_fn(time)
 
         # Z-score the input
@@ -169,9 +170,9 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
     def loss(
         self,
         input: Tensor,
-        condition_mask: Optional[Tensor] = None,  # ? Generated at training loop!
-        edge_mask: Optional[Tensor] = None,  # ? Generated at training loop!
-        times: Optional[Tensor] = None,  # ? Generated at training loop!
+        condition_mask: Optional[Tensor] = None,
+        edge_mask: Optional[Tensor] = None,
+        times: Optional[Tensor] = None,
         control_variate=True,
         control_variate_threshold=0.3,
         rebalance_loss=True,
@@ -301,13 +302,13 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
             # D: number of features per node
             D = eps.shape[-1]
 
-            # term1: 2/s * sum(eps * score_mean_pred) over F, masked
+            # term 1: 2/s * sum(eps * score_mean_pred) over F, masked
             term1 = (
                 2 / s * torch.sum(eps * score_mean_pred * mask_f, dim=-1).unsqueeze(-1)
             )
-            # term2: sum(eps^2) over F, masked, divided by s^2
+            # term 2: sum(eps^2) over F, masked, divided by s^2
             term2 = torch.sum((eps**2) * mask_f, dim=-1).unsqueeze(-1) / (s**2)
-            # term3: D / s^2, but only for unobserved nodes
+            # term 3: D / s^2, but only for unobserved nodes
             term3 = mask_f * (D / (s**2))
 
             # Sum over features, keep [B, T]
