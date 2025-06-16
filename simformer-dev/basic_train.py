@@ -14,6 +14,7 @@ from sbi.neural_nets.net_builders.vector_field_nets import Simformer, MaskedSimf
 class LinearGaussian(Dataset):
     def __init__(self, num_features, n):
         self.num_nodes = 3
+        self.num_features = num_features
 
         theta1 = np.random.normal(0, 3, size=(n, num_features))
         x1 = 2 * np.sin(theta1) + np.random.normal(0, 0.5, size=(n, num_features))
@@ -112,7 +113,8 @@ for epoch in range(num_epochs):
         # Remember that the forward() method is within the loss, i.e., you do *not* need to call forward()
         batch_losses = model.loss(
             input=input,
-            edge_mask=edge_mask
+            condition_mask=condition_mask,
+            edge_mask=edge_mask,
         )
 
         # Take the mean of the batch-wise losses to get a single scalar for backprop
@@ -155,4 +157,3 @@ plt.title('Training Loss over Epochs')
 plt.legend()
 plt.grid(True)
 plt.show()
-# %%
