@@ -32,6 +32,7 @@ from sbi.neural_nets.net_builders.mdn import build_mdn
 from sbi.neural_nets.net_builders.mixed_nets import build_mnle, build_mnpe
 from sbi.neural_nets.net_builders.vector_field_nets import (
     build_flow_matching_estimator,
+    build_masked_score_matching_estimator,
     build_score_matching_estimator,
 )
 from sbi.utils.nn_utils import check_net_device
@@ -123,11 +124,13 @@ def simformer_nn(
 
     def build_fn(
         batch_inputs,
+        conditioning_masks,  # ? Ignored, should keep?
+        edge_masks,  # ? Ignored, should keep?
     ):
         # Build the score matching estimator
-        return build_score_matching_estimator(
+        return build_masked_score_matching_estimator(
             batch_x=batch_inputs,
-            batch_y=batch_inputs,  # Unused
+            batch_y=batch_inputs,  # Unused, only for compatibility
             **kwargs,
         )
 
