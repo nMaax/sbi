@@ -355,7 +355,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
             dataloader_kwargs=dataloader_kwargs,
         )
         # First round or if retraining from scratch:
-        # Call the `self._build_neural_net` with the rounds' thetas and xs as
+        # Call the `self._build_neural_net` with the rounds' inputs and masks as
         # arguments, which will build the neural network.
         if self._neural_net is None or retrain_from_scratch:
             # Get theta,x to initialize NN
