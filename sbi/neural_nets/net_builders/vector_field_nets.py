@@ -11,6 +11,8 @@ from torch import Tensor
 from sbi.neural_nets.estimators.flowmatching_estimator import FlowMatchingEstimator
 from sbi.neural_nets.estimators.score_estimator import (
     ConditionalScoreEstimator,
+    MaskedConditionalScoreEstimator,
+    MaskedVEScoreEstimator,
     SubVPScoreEstimator,
     VEScoreEstimator,
     VPScoreEstimator,
@@ -28,11 +30,11 @@ from sbi.utils.vector_field_utils import MaskedVectorFieldNet, VectorFieldNet
 def build_vector_field_estimator(
     batch_x: Tensor,
     batch_y: Tensor,
-    estimator_type: str = "flow",  # "flow" or "score"
+    estimator_type: str = "flow",  # "flow", "score", or "masked-score"
     z_score_x: Optional[str] = None,
     z_score_y: Optional[str] = None,
     embedding_net: nn.Module = nn.Identity(),
-    sde_type: str = "ve",  # Only used for score estimator
+    sde_type: str = "ve",  # Only used for (masked) score estimator
     hidden_features: Union[Sequence[int], int] = 100,
     time_embedding_dim: int = 32,
     num_layers: int = 5,
@@ -41,7 +43,9 @@ def build_vector_field_estimator(
     mlp_ratio: int = 4,
     net: str | nn.Module = "ada_mlp",  # "mlp", "ada_mlp", "transformer", or "simformer"
     **kwargs,
-) -> Union[FlowMatchingEstimator, ConditionalScoreEstimator]:
+) -> Union[
+    FlowMatchingEstimator, ConditionalScoreEstimator, MaskedConditionalScoreEstimator
+]:
     """Builds a vector field estimator (flow matching or score matching) with the given
     network.
 
@@ -120,9 +124,6 @@ def build_vector_field_estimator(
             **kwargs,
         )
     elif net == "simformer":
-        # ? Or should I rather make a build_simformer() factory method
-        del estimator_type  # Simformer is always 'score' type
-
         hidden_dim = (
             hidden_features if isinstance(hidden_features, int) else hidden_features[0]
         )
@@ -144,6 +145,7 @@ def build_vector_field_estimator(
             raise ValueError(f"Unknown architecture: {net}")
 
     # Z-score setup
+    # TODO Should most definitely check if this is compatible with Simformer
     mean_0, std_0 = z_standardization(batch_x, z_score_x == "structured")
     embedding_net_y = (
         standardizing_net(batch_y, z_score_y == "structured")
@@ -177,6 +179,22 @@ def build_vector_field_estimator(
             mean_0=mean_0,
             std_0=std_0,
         )
+    elif estimator_type == "masked-score":
+        # Choose the appropriate score estimator based on SDE type
+        if sde_type == "vp" or sde_type == "subvp":
+            raise NotImplementedError
+        elif sde_type == "ve":
+            estimator_cls = MaskedVEScoreEstimator
+        else:
+            raise ValueError(f"Unknown SDE type: {sde_type}")
+
+        return estimator_cls(
+            net=vectorfield_net,
+            input_shape=batch_x[0].shape,
+            embedding_net=embedding_net_y,
+            mean_0=mean_0,
+            std_0=std_0,
+        )
     else:
         raise ValueError(f"Unknown estimator type: {estimator_type}")
 
@@ -188,6 +206,10 @@ def build_flow_matching_estimator(*args, **kwargs):
 
 def build_score_matching_estimator(*args, **kwargs):
     return build_vector_field_estimator(*args, estimator_type="score", **kwargs)
+
+
+def build_masked_score_matching_estimator(*args, **kwargs):
+    return build_vector_field_estimator(*args, estimator_type="masked-score", **kwargs)
 
 
 # ======= Time Embedding Shared Components =======
