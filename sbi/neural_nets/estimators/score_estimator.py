@@ -169,9 +169,9 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
     def loss(
         self,
         input: Tensor,
-        time: Optional[Tensor] = None,  # ? Generated at training loop!
         condition_mask: Optional[Tensor] = None,  # ? Generated at training loop!
         edge_mask: Optional[Tensor] = None,  # ? Generated at training loop!
+        times: Optional[Tensor] = None,  # ? Generated at training loop!
         control_variate=True,
         control_variate_threshold=0.3,
         rebalance_loss=True,
@@ -206,17 +206,17 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         B, T, F = input.shape
 
         # Sample times if not provided
-        if time is None:
-            time = torch.rand(B, device=device)
-            time = time * (self.t_max - self.t_min)
-            time = time + self.t_min  # [B,]
+        if times is None:
+            times = torch.rand(B, device=device)
+            times = times * (self.t_max - self.t_min)
+            times = times + self.t_min  # [B,]
 
         # Sample noise
         eps = torch.randn_like(input)  # [B, T, F]
 
         # Compute mean and std for the SDE
-        mean_t = self.mean_fn(input, time)  # [B, T, F]
-        std_t = self.std_fn(time)  # [B, 1, 1] or [B, 1] or [B]
+        mean_t = self.mean_fn(input, times)  # [B, T, F]
+        std_t = self.std_fn(times)  # [B, 1, 1] or [B, 1] or [B]
         while std_t.dim() < input.dim():
             std_t = std_t.unsqueeze(-1)
         std_t = std_t.expand_as(input)  # [B, T, F]
@@ -244,7 +244,7 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
 
         # Model prediction
         score_pred = self.forward(
-            input_noised, time, condition_mask, edge_mask
+            input_noised, times, condition_mask, edge_mask
         )  # [B, T, F]
 
         # Compute MSE loss, mask out observed entries
@@ -267,7 +267,7 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         if control_variate:
             # Compute score at the mean (mean_t), with same masks
             score_mean_pred = self.forward(
-                mean_t, time, condition_mask, edge_mask
+                mean_t, times, condition_mask, edge_mask
             )  # [B, T, F]
 
             # Squeeze std_t for broadcasting
@@ -317,7 +317,7 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
             num_elements = (~condition_mask).sum(dim=1, keepdim=True).clamp(min=1)
             loss = loss / num_elements.unsqueeze(-1)
 
-        weights = self.weight_fn(time)
+        weights = self.weight_fn(times)
         if not isinstance(weights, torch.Tensor):
             weights = torch.tensor(weights, device=input.device, dtype=loss.dtype)
 
