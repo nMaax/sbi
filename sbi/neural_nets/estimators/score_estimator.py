@@ -227,17 +227,37 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         # True score
         score_target = -eps / std_t
 
-        # Apply condition mask: where condition_mask is True, use input (observed)
         # If condition_mask is None, generate one with Bernoulli(p=0.33)
         if condition_mask is None:
             condition_mask = torch.bernoulli(torch.full((B, T), 0.33, device=device))
         condition_mask = condition_mask.bool()
-        # Shape of condition_mask is [B, T], I unsqueeze for broadcasting on F
-        input_noised = torch.where(
-            condition_mask.unsqueeze(-1).expand(B, T, F), input, input_noised
-        )
 
-        # If edge_mask is None, generate one of all ones [T, T]
+        if condition_mask.dim() == 1:
+            # Shape of condition_mask is [T], I unsqueeze for broadcasting on B and F
+            input_noised = torch.where(
+                # Where condition_mask is True, use input (observed)
+                condition_mask.unsqueeze(0).unsqueeze(-1).expand(B, T, F),
+                input,
+                input_noised,
+            )
+        elif condition_mask.dim() == 2:
+            # Shape of condition_mask is [B, T], I unsqueeze for broadcasting on F
+            input_noised = torch.where(
+                # Where condition_mask is True, use input (observed)
+                condition_mask.unsqueeze(-1).expand(B, T, F),
+                input,
+                input_noised,
+            )
+        else:
+            # Shape of condition_mask is already [B, T, F], No need for broadcasting
+            input_noised = torch.where(
+                # Where condition_mask is True, use input (observed)
+                condition_mask,
+                input,
+                input_noised,
+            )
+
+        # If edge_mask is None, generate one of all ones [T, T] (fully connected graph)
         if edge_mask is None:
             edge_mask = torch.ones(B, T, T, device=device)
         edge_mask = edge_mask.bool()
@@ -248,7 +268,6 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         )  # [B, T, F]
 
         # Compute MSE loss, mask out observed entries
-        # sum tensor of shape [B, T, F] over F
         loss = (score_pred - score_target) ** 2.0
         loss = torch.where(condition_mask.unsqueeze(-1), torch.zeros_like(loss), loss)
 
