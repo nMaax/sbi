@@ -58,6 +58,7 @@ num_nodes = train_dataset.num_nodes
 net = Simformer(
     in_features= in_features,
     num_nodes= num_nodes,
+    ada_time = True,
 )
 
 # Instantiate score estimator
