@@ -781,7 +781,7 @@ class MaskedDiTBlock(nn.Module):
             mask = (
                 mask.unsqueeze(1)
                 .expand(B, self.attn.num_heads, T, T)
-                .reshape(B * self.attn, self.attn.num_heads, T, T)
+                .reshape(B * self.attn.num_heads, T, T)
             )
 
         # Self-attention
