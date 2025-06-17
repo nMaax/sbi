@@ -716,7 +716,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
             )
 
         assert_all_finite(loss, f"{cls_name} loss")
-        return calibration_kernel(inputs) * loss
+        return calibration_kernel(inputs).unsqueeze(-1).unsqueeze(-1) * loss
 
 
 class VectorFieldInference(NeuralInference, ABC):
