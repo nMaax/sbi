@@ -6,14 +6,16 @@ from sbi.utils import BoxUniform
 
 _ = torch.manual_seed(0)
 
-NUM_SIM_NODES = 2 # e.g., node 0 is 'theta', node 1 is 'x'
-NUM_NODE_FEATURES = 3 # e.g., both theta1, x1 have 3 features
+NUM_SIM_NODES = 3 # e.g., node 0 is 'theta', node 1 is 'x1', node 2 is 'x2'
+NUM_NODE_FEATURES = 3 # e.g., both theta1, x1 and x2 have 3 features
 
 def simformer_simulator(num_simulations):
-    theta_raw = torch.randn(num_simulations, NUM_NODE_FEATURES) * 2.0
-    x_raw = theta_raw * 0.5 + 1.0 + torch.randn(num_simulations, NUM_NODE_FEATURES) * 0.1
 
-    inputs_tensor = torch.stack([theta_raw, x_raw], dim=1)
+    theta1 = torch.randn(num_simulations, NUM_NODE_FEATURES) * 3.0
+    x1 = 2 * torch.sin(theta1) + torch.randn(num_simulations, NUM_NODE_FEATURES) * 0.5
+    x2 = 0.1 * theta1 ** 2 + 0.5 * torch.abs(x1) * torch.randn(num_simulations, NUM_NODE_FEATURES)
+
+    inputs_tensor = torch.stack([theta1, x1, x2], dim=1)
 
     # True for observed, False for latent.
     # Note: This mask is for a single 'input' sample. It gets broadcasted for the batch.
@@ -22,8 +24,12 @@ def simformer_simulator(num_simulations):
     condition_masks = condition_mask_single_sample.unsqueeze(0).expand(num_simulations, NUM_SIM_NODES)
 
     # True for an edge from row to column.
-    edge_mask_single_sample = torch.zeros((NUM_SIM_NODES, NUM_SIM_NODES), dtype=torch.bool)
-    edge_mask_single_sample[0, 1] = True # Edge from node 0 to node 1
+    # ! This cause nan/inf values in attention layer within the block since mask was non-meaningful
+    # edge_mask_single_sample = torch.zeros((NUM_SIM_NODES, NUM_SIM_NODES), dtype=torch.bool)
+    # edge_mask_single_sample[0, 1] = True # Edge from node 0 to node 1
+
+    # ! This solves the issue (no mask)
+    edge_mask_single_sample = torch.ones((NUM_SIM_NODES, NUM_SIM_NODES), dtype=torch.bool)
     edge_masks = edge_mask_single_sample.unsqueeze(0).expand(num_simulations, NUM_SIM_NODES, NUM_SIM_NODES)
 
     return inputs_tensor, condition_masks, edge_masks
