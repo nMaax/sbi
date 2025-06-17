@@ -259,10 +259,14 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
             )
 
         # If edge_mask is None, generate one of all ones [T, T] (fully connected graph)
+        # ! Above I do many checks on condition mask dimensions
+        # ! Should I do also for edge mask?
         if edge_mask is None:
             edge_mask = torch.ones(B, T, T, device=device)
         edge_mask = edge_mask.bool()
 
+        # ! Above I do many checks on condition mask dimensions
+        # ! Should I do also here?
         # Model prediction
         score_pred = self.forward(
             input_noised, times, condition_mask, edge_mask
@@ -270,6 +274,8 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
 
         # Compute MSE loss, mask out observed entries
         loss = (score_pred - score_target) ** 2.0
+        # ! Above I do many checks on condition mask dimensions
+        # ! Should I do also here? This unsqueeze(-1) looks suspect
         loss = torch.where(condition_mask.unsqueeze(-1), torch.zeros_like(loss), loss)
 
         # Since sbi expects loss-per-batch, I sum on both T and F
