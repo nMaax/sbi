@@ -71,6 +71,17 @@ density_estimator = inference.train()
 print(density_estimator)
 
 # %%
+import matplotlib.pyplot as plt
+
+# Plot the validation loss from the inference summary
+validation_loss = inference.summary['validation_loss']
+plt.plot(validation_loss)
+plt.xlabel('Epoch')
+plt.ylabel('Validation Loss')
+plt.title('Validation Loss over Epochs')
+plt.show()
+
+# %%
 posterior = inference.build_posterior()
 
 print(posterior)
