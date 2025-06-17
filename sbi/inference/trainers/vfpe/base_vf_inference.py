@@ -488,6 +488,12 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
                     inputs_batch = inputs_batch.repeat(
                         times_batch, *([1] * (inputs_batch.ndim - 1))
                     )
+                    conditioning_masks_batch = conditioning_masks_batch.repeat(
+                        times_batch, *([1] * (conditioning_masks_batch.ndim - 1))
+                    )
+                    edge_masks_batch = edge_masks_batch.repeat(
+                        times_batch, *([1] * (edge_masks_batch.ndim - 1))
+                    )
                     prior_masks_batch = prior_masks_batch.repeat(
                         times_batch, *([1] * (prior_masks_batch.ndim - 1))
                     )
