@@ -1,6 +1,5 @@
 # %%
 import torch
-import numpy as np
 from sbi.inference import NPE, Simformer # type: ignore
 from sbi.utils import BoxUniform
 
@@ -37,10 +36,10 @@ def simformer_simulator(num_simulations):
 # %%
 
 # The actual diffusion will use an implicit Gaussian.
-# This prior is used for bounding box checks if samples go out of reasonable range.
+# This prior is used for bounding box checks if samples go out of reasonable range
 prior_low = -5 * torch.ones(NUM_SIM_NODES * NUM_NODE_FEATURES)
 prior_high = 5 * torch.ones(NUM_SIM_NODES * NUM_NODE_FEATURES)
-prior = BoxUniform(low=prior_low, high=prior_high)
+prior = BoxUniform(low=prior_low, high=prior_high, device="gpu")
 
 # %%
 
@@ -48,7 +47,7 @@ inference = Simformer(
     prior=prior,
     vf_estimator="simformer",
     sde_type="ve",
-    device="cpu",
+    device="gpu",
 )
 
 # %%
@@ -82,7 +81,16 @@ plt.title('Validation Loss over Epochs')
 plt.show()
 
 # %%
-posterior = inference.build_posterior()
+
+condition_mask_single_sample = torch.zeros((NUM_SIM_NODES,), dtype=torch.bool)
+condition_mask_single_sample[1] = True # Node 1 (index 1) is observed
+
+edge_mask_single_sample = torch.ones((NUM_SIM_NODES, NUM_SIM_NODES), dtype=torch.bool)
+
+posterior = inference.build_arbitrary_joint(
+    conditional_mask=condition_mask_single_sample,
+    edge_mask=edge_mask_single_sample,
+)
 
 print(posterior)
 
