@@ -200,7 +200,7 @@ class VectorFieldJoint(NeuralJoint):
             sample_with = self.sample_with
 
         x = self._x_else_default_x(x)
-        x = reshape_to_batch_event(x, self.vector_field_estimator.condition_shape)
+        x = reshape_to_batch_event(x, self.vector_field_estimator.input_shape)
         is_iid = x.shape[0] > 1
         self.potential_fn.set_x(
             x, x_is_iid=is_iid, iid_method=iid_method, iid_params=iid_params
