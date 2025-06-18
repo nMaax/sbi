@@ -1012,6 +1012,7 @@ class DiTBlockWithCrossAttention(nn.Module):
         return x
 
 
+# ! Add net
 class Simformer(MaskedVectorFieldNet):
     def __init__(
         self,

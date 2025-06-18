@@ -152,8 +152,8 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
     def append_simulations(
         self,
         inputs: Tensor,
-        conditioning_masks: Tensor,
-        edge_masks: Tensor,
+        conditioning_masks: Tensor,  # ! Could be Optional, default Bernoulli
+        edge_masks: Tensor,  # ! Optional, Default = Ones
         proposal: Optional[DirectPosterior] = None,
         exclude_invalid_x: Optional[bool] = None,
         data_device: Optional[str] = None,
@@ -369,14 +369,6 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
                 condition_masks[self.train_indices].to("cpu"),
                 edge_masks[self.train_indices].to("cpu"),
             )
-
-            # TODO adapt with masking
-            # test_posterior_net_for_multi_d_x(
-            #     self._neural_net,
-            #     inputs,
-            #     conditioning_masks,
-            #     edge_masks,
-            # )
 
             del inputs, condition_masks, edge_masks
 

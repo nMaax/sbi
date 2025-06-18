@@ -124,6 +124,7 @@ def infer(
     return posterior
 
 
+# ! Sub-class of NeuralInference
 class MaskedNeuralInference(ABC):
     """Abstract base class for masked neural inference methods."""
 

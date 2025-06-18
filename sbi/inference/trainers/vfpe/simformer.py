@@ -10,6 +10,7 @@ from torch.utils.tensorboard.writer import SummaryWriter
 from sbi.inference.joints.vector_field_joint import (
     VectorFieldJoint,
 )
+from sbi.inference.posteriors.vector_field_posterior import VectorFieldPosterior
 from sbi.inference.trainers.vfpe.base_vf_inference import (
     MaskedVectorFieldEstimatorBuilder,
     MaskedVectorFieldInference,
@@ -128,7 +129,10 @@ class Simformer(MaskedVectorFieldInference):
         vector_field_estimator: Optional[MaskedConditionalVectorFieldEstimator] = None,
         prior: Optional[Distribution] = None,
         sample_with: str = "sde",
-    ):
+    ) -> VectorFieldPosterior:
+        # ! Classical pipeline, not wrap joint
+        # ! Convert MaskedConditionalVectorFieldEstimator
+        # ! to ConditionalVectorFieldEstimator
         raise NotImplementedError
 
     def build_likelihood(
