@@ -58,7 +58,7 @@ num_nodes = train_dataset.num_nodes
 net = Simformer(
     in_features= in_features,
     num_nodes= num_nodes,
-    ada_time = True,
+    ada_time = False,
 )
 
 # Instantiate score estimator
@@ -158,3 +158,5 @@ plt.title('Training Loss over Epochs')
 plt.legend()
 plt.grid(True)
 plt.show()
+
+# %%
