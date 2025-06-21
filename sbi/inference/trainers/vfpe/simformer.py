@@ -126,7 +126,8 @@ class Simformer(MaskedVectorFieldInference):
 
     def build_posterior(
         self,
-        condition_mask,
+        condition_mask: Tensor,
+        edge_mask: Tensor,
         vector_field_estimator: Optional[MaskedConditionalVectorFieldEstimator] = None,
         prior: Optional[Distribution] = None,
         sample_with: str = "sde",
@@ -138,6 +139,7 @@ class Simformer(MaskedVectorFieldInference):
 
         return self._build_posterior(
             condition_mask,
+            edge_mask,
             masked_vector_field_estimator=vector_field_estimator,
             prior=prior,
             sample_with=sample_with,
