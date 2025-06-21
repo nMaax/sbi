@@ -43,7 +43,7 @@ prior = BoxUniform(low=prior_low, high=prior_high, device="gpu")
 
 # %%
 
-inference = Simformer(
+inference: Simformer = Simformer(
     prior=prior,
     vf_estimator="simformer",
     sde_type="ve",
@@ -58,7 +58,7 @@ print("sim_conditioning_masks.shape", sim_conditioning_masks.shape) # Expected: 
 print("sim_edge_masks.shape", sim_edge_masks.shape) # Expected: [2, 2]
 
 # %%
-inference = inference.append_simulations(
+inference.append_simulations(
     inputs=sim_inputs,
     conditioning_masks=sim_conditioning_masks,
     edge_masks=sim_edge_masks,
@@ -87,8 +87,8 @@ condition_mask_single_sample[1] = True # Node 1 (index 1) is observed
 
 edge_mask_single_sample = torch.ones((NUM_SIM_NODES, NUM_SIM_NODES), dtype=torch.bool)
 
-posterior = inference.build_arbitrary_joint(
-    conditional_mask=condition_mask_single_sample,
+posterior = inference.build_posterior(
+    condition_mask=condition_mask_single_sample,
     edge_mask=edge_mask_single_sample,
 )
 
