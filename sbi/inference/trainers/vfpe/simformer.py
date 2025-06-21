@@ -126,14 +126,23 @@ class Simformer(MaskedVectorFieldInference):
 
     def build_posterior(
         self,
+        condition_mask,
         vector_field_estimator: Optional[MaskedConditionalVectorFieldEstimator] = None,
         prior: Optional[Distribution] = None,
         sample_with: str = "sde",
+        **kwargs,
     ) -> VectorFieldPosterior:
         # ! Classical pipeline, not wrap joint
         # ! Convert MaskedConditionalVectorFieldEstimator
         # ! to ConditionalVectorFieldEstimator
-        raise NotImplementedError
+
+        return self._build_posterior(
+            condition_mask,
+            masked_vector_field_estimator=vector_field_estimator,
+            prior=prior,
+            sample_with=sample_with,
+            **kwargs,
+        )
 
     def build_likelihood(
         self,
