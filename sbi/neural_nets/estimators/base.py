@@ -578,7 +578,8 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
             def __init__(self, original_estimator, fixed_cond_mask, fixed_edge_mask):
                 # fixed_cond_mask is assumed to be of shape [T] (number of nodes)
                 # 1 indicates observed (x_o), 0 indicates latent (theta)
-                # original input shape is assumed to be [B, T, F]
+                # original input shape is assumed to be [T, F] as parameter
+                # but [B, T, F] at loss() and forward() time
 
                 # Assume input_shape is (T, F)
                 T, F = original_estimator.input_shape
@@ -633,10 +634,15 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                 # Assemble full input from theta (input) and x_o (condition)
                 full_inputs_tensor = self._assemble_full_inputs(input, condition)
                 # Call the original estimator's loss
+                B = full_inputs_tensor.shape[0]
+                expanded_cond_mask = self._fixed_cond_mask.unsqueeze(0).expand(B, -1)
+                expanded_edge_mask = self._fixed_edge_mask.unsqueeze(0).expand(
+                    B, -1, -1
+                )
                 return self._original_estimator.loss(
                     full_inputs_tensor,
-                    self._fixed_cond_mask,
-                    self._fixed_edge_mask,
+                    expanded_cond_mask,
+                    expanded_edge_mask,
                     **kwargs,
                 )
 
@@ -646,12 +652,10 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                 # Call the original estimator's ode_fn
                 return self._original_estimator.ode_fn(
                     full_inputs_tensor,
-                    self._fixed_cond_mask,
-                    self._fixed_edge_mask,
                     times,
                 )
 
-            # ! Copy other methods from ConditonalEstimator and
+            # ! Implement other methods from ConditonalEstimator and
             # ! ConditionalectorFieldEstimator:
             # ! You'd also need to override score, drift_fn,
             # ! diffusion_fn, ode_fn similarly
@@ -665,16 +669,27 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                 passed at init time.
 
                 Args:
-                    theta_part: Tensor of shape (..., num_latent, F)
-                    x_part: Tensor of shape (..., num_observed, F)
+                    theta_part: Tensor of shape (B, num_latent, F)
+                    x_part: Tensor of shape (B, num_observed, F)
 
                 Returns:
-                    full_inputs: Tensor of shape (..., T, F)
+                    full_inputs: Tensor of shape (B, T, F)
                 """
 
-                full_inputs = torch.zeros(self._fixed_cond_mask)
-                full_inputs[self._latent_idx, :] = theta_part
-                full_inputs[self._observed_idx, :] = x_part
+                # Get batch shape and feature dimension
+                B = theta_part.shape[0]
+                num_latent = theta_part.shape[1]
+                num_observed = x_part.shape[1]
+                F = theta_part.shape[2]
+                T = num_latent + num_observed
+
+                # Prepare output tensor
+                full_inputs = torch.zeros(
+                    B, T, F, dtype=theta_part.dtype, device=theta_part.device
+                )
+                # Place theta_part and x_part in the correct positions
+                full_inputs[:, self._latent_idx, :] = theta_part
+                full_inputs[:, self._observed_idx, :] = x_part
 
                 return full_inputs
 
@@ -685,15 +700,15 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                 passed at init time.
 
                 Args:
-                    full_inputs: Tensor of shape (..., T, F)
+                    full_inputs: Tensor of shape (B, T, F)
 
                 Returns:
-                    theta_part: Tensor of shape (..., num_latent, F)
-                    x_part: Tensor of shape (..., num_observed, F)
+                    theta_part: Tensor of shape (B, num_latent, F)
+                    x_part: Tensor of shape (B, num_observed, F)
                 """
 
-                theta_part = full_inputs[self._latent_idx, :]
-                x_part = full_inputs[self._observed_idx, :]
+                theta_part = full_inputs[:, self._latent_idx, :]
+                x_part = full_inputs[:, self._observed_idx, :]
 
                 return theta_part, x_part
 
