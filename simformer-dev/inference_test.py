@@ -117,6 +117,3 @@ x_predictive = simulator(theta_posterior)  # Simulate data from posterior.
 # %%
 print("Posterior predictives: ", torch.mean(x_predictive, axis=0))
 print("Observation: ", x_obs)
-
-# %%
-sim_edge_mask
