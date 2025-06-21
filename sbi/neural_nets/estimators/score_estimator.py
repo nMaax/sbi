@@ -495,6 +495,9 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         else:
             raise ValueError(f"Weight function {weight_fn} not recognized.")
 
+    # ? Should I pass condition mask and edge mask here?
+    # ? Since later score is called, but without anything passing it will
+    # ? automatically generate masks internally...
     def ode_fn(self, input: Tensor, times: Tensor) -> Tensor:
         r"""ODE flow function of the score estimator.
 
