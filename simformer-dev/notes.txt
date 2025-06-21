@@ -3,3 +3,17 @@
 From merge_flow_builders_to_current_main:
 	-> simformer (actual branch for the PR)
 	-> simformer-dev (quick tests)
+
+## TODO
+
+- Corrections by Manuel: Simformer in NeuralNets renamed in SimformerNet, etc. (search # ? and # !)
+- Condition and Edge mask multiple if handling in VE/ScoreEstimator loss
+- Optimizations around code, especially at training and inference time in Score Estimator and SimformerNet
+- Renaming conditioning_mask in conditioning_mask
+- Check that convention (1 =, 0=) for condition mask and (1=, 0=) for edge mask is respected
+- Fix ode_fn not passing condition and edge mask to the subsequent Score
+- Fix score, forward, loss, ode_fn not receiving condition and edge mask in Wrapper withing MaskedConditionalVectorFieldEstimator.unmask() method
+- Move all Masked* versions of classes below their reference
+- Debug inference time with posterior only
+- Finish up the joint classes if you have time
+- Decide at what level you want to see masks to appear among parameters of methods, and where not, also decide accordingly the implementation of the Wrapper as it must be a *callable* by itself
