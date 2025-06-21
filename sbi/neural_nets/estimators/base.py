@@ -620,6 +620,15 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                 self._latent_idx = (fixed_cond_mask == 0).nonzero(as_tuple=True)[0]
                 self._observed_idx = (fixed_cond_mask == 1).nonzero(as_tuple=True)[0]
 
+            # Alright so, I need to decide how to design this wrapper,
+            # if I take the surrounding code as reference I skip passing
+            # masks to score, loss and forward many times
+            # Should I rather take as reference an implementation of a child class?
+            # e.g. MaskedConditionalScoreEstimator?
+
+            # ? Should I pass condition mask and edge mask here?
+            # ? Since later score is called, but without anything passing it will
+            # ? automatically generate masks internally...
             def forward(
                 self, input_data: Tensor, condition_data: Tensor, **kwargs
             ) -> Tensor:
@@ -630,6 +639,9 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                 # Call the original masked estimator's forward method
                 return self._original_estimator.forward(full_inputs_tensor, **kwargs)
 
+            # ? Should I pass condition mask and edge mask here?
+            # ? Since later score is called, but without anything passing it will
+            # ? automatically generate masks internally...
             def loss(self, input, condition, **kwargs):
                 # Assemble full input from theta (input) and x_o (condition)
                 full_inputs_tensor = self._assemble_full_inputs(input, condition)
@@ -646,6 +658,9 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                     **kwargs,
                 )
 
+            # ? Should I pass condition mask and edge mask here?
+            # ? Since later score is called, but without anything passing it will
+            # ? automatically generate masks internally...
             def ode_fn(self, input, condition, times):
                 # Assemble full input from theta (input) and x_o (condition)
                 full_inputs_tensor = self._assemble_full_inputs(input, condition)
