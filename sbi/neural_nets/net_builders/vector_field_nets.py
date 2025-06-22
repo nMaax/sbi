@@ -1012,8 +1012,7 @@ class DiTBlockWithCrossAttention(nn.Module):
         return x
 
 
-# ! Add net
-class Simformer(MaskedVectorFieldNet):
+class SimformerNet(MaskedVectorFieldNet):
     def __init__(
         self,
         in_features: int,
@@ -1470,7 +1469,7 @@ def build_simformer_network(
     dim_cond: int = 16,
     ada_time: bool = False,
     **kwargs,
-) -> Simformer:
+) -> SimformerNet:
     """Builds a Simformer network."""
 
     del kwargs  # Unused
@@ -1481,7 +1480,7 @@ def build_simformer_network(
     num_nodes = batch_x.shape[1]
 
     # Create the vector field network (Simformer)
-    vectorfield_net = Simformer(
+    vectorfield_net = SimformerNet(
         in_features=in_features,
         num_nodes=num_nodes,
         dim_val=dim_val,
