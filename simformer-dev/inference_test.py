@@ -6,18 +6,19 @@ from sbi.utils import BoxUniform
 
 _ = torch.manual_seed(0)
 
-NUM_SIM_NODES = 3  # e.g., node 0 is 'theta', node 1 is 'x1', node 2 is 'x2'
+NUM_SIM_NODES = 2 #3  # e.g., node 0 is 'theta', node 1 is 'x1', node 2 is 'x2'
 NUM_NODE_FEATURES = 3  # e.g., both theta1, x1 and x2 have 3 features
 
 
 def simformer_simulator(num_simulations):
     theta1 = torch.randn(num_simulations, NUM_NODE_FEATURES) * 3.0
     x1 = 2 * torch.sin(theta1) + torch.randn(num_simulations, NUM_NODE_FEATURES) * 0.5
-    x2 = 0.1 * theta1**2 + 0.5 * torch.abs(x1) * torch.randn(
-        num_simulations, NUM_NODE_FEATURES
-    )
+    # x2 = 0.1 * theta1**2 + 0.5 * torch.abs(x1) * torch.randn(
+    #     num_simulations, NUM_NODE_FEATURES
+    # )
 
-    inputs_tensor = torch.stack([theta1, x1, x2], dim=1)
+    # inputs_tensor = torch.stack([theta1, x1, x2], dim=1)
+    inputs_tensor = torch.stack([theta1, x1], dim=1)
 
     # True for observed, False for latent.
     # Note: This mask is for a single 'input' sample. It gets broadcasted for the batch.
