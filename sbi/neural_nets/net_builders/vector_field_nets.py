@@ -1079,14 +1079,28 @@ class SimformerNet(MaskedVectorFieldNet):
         ids = torch.arange(T, device=device).unsqueeze(0).expand(B, -1)  # [B, T]
         id_h = self.id_embedding(ids)  # [B, T, dim_id]
 
+        if condition_mask.dim() == 1:
+            # Shape is [T], expand to [B, T, dim_cond]
+            condition_mask_expanded = (
+                condition_mask.unsqueeze(0).unsqueeze(-1).expand(B, T, self.dim_cond)
+            )
+        else:
+            # Shape is [B, T], expand to [B, T, dim_cond]
+            condition_mask_expanded = condition_mask.unsqueeze(-1).expand(
+                B, T, self.dim_cond
+            )
+
         # Conditioning
         # conditioning_parameter: [1, 1, dim_cond]
-        # condition_mask: [B, T]
-        conditioning_h = self.conditioning_parameter.expand(
-            B, T, self.dim_cond
-        ) * condition_mask.unsqueeze(-1).expand(B, T, self.dim_cond)  # [B, T, dim_cond]
+        conditioning_h = (
+            self.conditioning_parameter.expand(B, T, self.dim_cond)
+            * condition_mask_expanded
+        )  # [B, T, dim_cond]
 
-        # Time embedding
+        # Time embedding, [B,] or []
+        if t.ndim == 0:
+            t = t.expand(B)
+
         # ? Normalize time to [0, 1] if not already done (should I do this?)
         # ? t_norm = (t - t.min()) / (t.max() - t.min() + 1e-8)
         # ? Answer: No
@@ -1095,12 +1109,19 @@ class SimformerNet(MaskedVectorFieldNet):
         # Concatenate tokens
         tokens = torch.cat(
             [val_h, id_h, conditioning_h], dim=-1
-        )  # [B, T, dim_val+dim_id+dim_cond]
+        )  # [B, T, dim_val + dim_id + dim_cond]
+
+        # Initial projection
         h = self.in_proj(tokens)  # [B, T, dim_hidden]
 
         # Pass through transformer blocks
         # Invert mask to follow Torch convention
-        # True: masked (no attention), False: allowed (attention)
+        # Edge mask convention:
+        #   E(i,j) = 1 for edge j depending on i,
+        #   0 otherwise
+        # Torch convention:
+        #   True for masked (no attention),
+        #   False for allowed (attention)
         for block in self.blocks:
             h = block(h, t_h, ~edge_mask.bool())
 

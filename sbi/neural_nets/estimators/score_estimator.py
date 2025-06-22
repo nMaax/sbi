@@ -94,7 +94,7 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         self,
         input: Tensor,  # [B, T, F]
         time: Tensor,  # [B] or [B, 1]
-        condition_mask,  # [B, T]
+        condition_mask,  # [T] or [B, T]
         edge_mask,  # [T, T] or [B, T, T]
     ) -> Tensor:
         r"""Forward pass of the score estimator
@@ -115,8 +115,17 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         B, T, F = input.shape
 
         # Compute time-dependent mean and std for z-scoring
+        # Handle scalar time (ndim=0) by unsqueezing to [1] for broadcasting
+        if time.ndim == 0:
+            time = time.unsqueeze(0)
         mean = self.approx_marginal_mean(time)  # [B, 1, F] or broadcastable
         std = self.approx_marginal_std(time)  # [B, 1, F] or broadcastable
+
+        # Ensure mean and std are broadcastable to input shape
+        while mean.dim() < input.dim():
+            mean = mean.unsqueeze(1)
+        while std.dim() < input.dim():
+            std = std.unsqueeze(1)
 
         # ? Skipped, as Simformer expects time as it is, not as a level of std
         # ? Answer: Ok
@@ -128,8 +137,7 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         # "Skip connection" Gaussian score
         score_gaussian = (input - mean) / (std**2)
 
-        # Model prediction (no flattening, pass masks)
-        # Pass time_enc instead of time
+        # Model prediction
         score_pred = self.net(input_enc, time, condition_mask, edge_mask)  # [B, T, F]
 
         # Output pre-conditioned score (same scaling as in reference)
@@ -147,7 +155,7 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         self,
         input: Tensor,  # [B, T, F]
         t: Tensor,  # [B] or [B, 1]
-        condition_mask: Optional[Tensor] = None,  # [B, T]
+        condition_mask: Optional[Tensor] = None,  # [B, T] or [T]
         edge_mask: Optional[Tensor] = None,  # [T, T] or [B, T, T]
     ) -> Tensor:
         r"""Score function of the score estimator.
@@ -204,6 +212,9 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
 
         """
         device = input.device
+        if input.dim() == 2:
+            # input is [T, F], unsqueeze batch dimension
+            input = input.unsqueeze(0)
         B, T, F = input.shape
 
         # Sample times if not provided
@@ -259,21 +270,33 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
             )
 
         # If edge_mask is None, generate one of all ones [T, T] (fully connected graph)
-        # ! Above I do many checks on condition mask dimensions
-        # ! Should I do also for edge mask?
         if edge_mask is None:
             edge_mask = torch.ones(B, T, T, device=device)
         edge_mask = edge_mask.bool()
+
+        if edge_mask.dim() == 2:
+            # Shaoe is [T, T], expand to batch dimension
+            edge_mask = edge_mask.unsqueeze(0).expand(B, T, T)
+        elif edge_mask.dim() == 3:
+            # Already correct shape [B, T, T]
+            pass
+        else:
+            raise ValueError(f"edge_mask has incorrect dimensions: {edge_mask.shape}")
 
         # ! Above I do many checks on condition mask dimensions
         # ! Should I do also here?
         # Model prediction
         score_pred = self.forward(
-            input_noised, times, condition_mask, edge_mask
+            #   [B, T, F]     [B,]   [B, T]          [B, T, T]
+            input_noised,
+            times,
+            condition_mask,
+            edge_mask,
         )  # [B, T, F]
 
         # Compute MSE loss, mask out observed entries
         loss = (score_pred - score_target) ** 2.0
+
         # ! Above I do many checks on condition mask dimensions
         # ! Should I do also here? This unsqueeze(-1) looks suspect
         loss = torch.where(condition_mask.unsqueeze(-1), torch.zeros_like(loss), loss)
