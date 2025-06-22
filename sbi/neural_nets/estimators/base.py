@@ -605,8 +605,8 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                     condition_shape=self._new_condition_shape,
                     t_min=original_estimator.t_min,
                     t_max=original_estimator.t_max,
-                    mean_base=0.0,  # original_estimator.mean_base,
-                    std_base=1.0,  # original_estimator.std_base,
+                    mean_base=0.0,  # Bypassing constraints, will override later
+                    std_base=1.0,  # Bypassing constraints, will override later
                 )
 
                 self.SCORE_DEFINED = original_estimator.SCORE_DEFINED
@@ -649,9 +649,6 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                     edge_mask=expanded_edge_mask,
                 )
 
-            def score(self, input: Tensor, condition: Tensor, t: Tensor) -> Tensor:
-                return self(input=input, condition=condition, time=t)
-
             def loss(
                 self,
                 input: Tensor,
@@ -680,6 +677,8 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                     control_variate_threshold,
                 )
 
+            # -------------------------- ODE METHODS --------------------------
+
             def ode_fn(self, input: Tensor, condition: Tensor, times: Tensor) -> Tensor:
                 # Assemble full input from give input and condition
                 full_inputs_tensor = self._assemble_full_inputs(input, condition)
@@ -704,6 +703,25 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
             # diffusion_fn, ode_fn similarly
             # All these methods would internally call _assemble_full_inputs
             # and then the original_estimator's corresponding masked method.
+
+            # -------------------------- SDE METHODS --------------------------
+
+            def score(self, input: Tensor, condition: Tensor, t: Tensor) -> Tensor:
+                return self(input=input, condition=condition, time=t)
+
+            def mean_t_fn(self, times: Tensor) -> Tensor:
+                return self._original_estimator.mean_t_fn(times)
+
+            def std_fn(self, times: Tensor) -> Tensor:
+                return self._original_estimator.std_fn(times)
+
+            def drift_fn(self, input: Tensor, times: Tensor) -> Tensor:
+                return self._original_estimator.drift_fn(input, times)
+
+            def diffusion_fn(self, input: Tensor, times: Tensor) -> Tensor:
+                return self._original_estimator.diffusion_fn(input, times)
+
+            # ------------------------- UTILITIES ------------------------------
 
             def _assemble_full_inputs(self, input_part, conditon_part):
                 """
