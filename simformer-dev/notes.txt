@@ -17,3 +17,4 @@ From merge_flow_builders_to_current_main:
 - Debug inference time with posterior only
 - Finish up the joint classes if you have time
 - Decide at what level you want to see masks to appear among parameters of methods, and where not, also decide accordingly the implementation of the Wrapper as it must be a *callable* by itself
+- Decide where you want to generate the automatic edge and condition masks
