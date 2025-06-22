@@ -28,7 +28,7 @@ class MaskedConditionalEstimator(nn.Module, ABC):
 
     @abstractmethod
     def loss(
-        self, input: Tensor, conditioning_mask: Tensor, edge_mask: Tensor, **kwargs
+        self, input: Tensor, condition_mask: Tensor, edge_mask: Tensor, **kwargs
     ) -> Tensor:
         r"""Return the loss for training the estimator.
 
@@ -566,11 +566,11 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
         )
 
     def get_unmasked_wrapper(
-        self, conditioning_mask_for_posterior: Tensor, edge_mask_for_posterior: Tensor
+        self, condition_mask_for_posterior: Tensor, edge_mask_for_posterior: Tensor
     ) -> ConditionalVectorFieldEstimator:
         """
         Returns a callable that behaves like a ConditionalVectorFieldEstimator
-        for a fixed conditioning_mask and edge_mask.
+        for a fixed condition_mask and edge_mask.
         """
 
         # Create a wrapper that captures `self` and the masks
@@ -728,7 +728,7 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                 return theta_part, x_part
 
         return UnmaskedWrapper(
-            self, conditioning_mask_for_posterior, edge_mask_for_posterior
+            self, condition_mask_for_posterior, edge_mask_for_posterior
         )
 
     @abstractmethod

@@ -166,7 +166,7 @@ class MaskedNeuralInference(ABC):
         # Initialize roundwise (inputs, prior_masks) for storage of parameters,
         # simulations and masks indicating if simulations came from prior.
         self._inputs_roundwise = []
-        self._conditioning_masks_roundwise = []
+        self._condition_masks_roundwise = []
         self._edge_masks_roundwise = []
         self._prior_masks = []
         self._model_bank = []
@@ -217,7 +217,7 @@ class MaskedNeuralInference(ABC):
             self._inputs_roundwise, self._data_round_index, starting_round
         )
         conditioning_masks = get_simulations_since_round(
-            self._conditioning_masks_roundwise, self._data_round_index, starting_round
+            self._condition_masks_roundwise, self._data_round_index, starting_round
         )
         edge_masks = get_simulations_since_round(
             self._edge_masks_roundwise, self._data_round_index, starting_round

@@ -40,9 +40,9 @@ class MaskedVectorFieldEstimatorBuilder(Protocol):
     """Protocol for building a masked vector field estimator from data."""
 
     def __call__(
-        self, inputs: Tensor, conditioning_mask: Tensor, edge_mask: Tensor
+        self, inputs: Tensor, condition_mask: Tensor, edge_mask: Tensor
     ) -> MaskedConditionalVectorFieldEstimator:
-        """Build a vector field estimator from inputs, conditioning_mask, edge_mask,
+        """Build a vector field estimator from inputs, condition_mask, edge_mask,
         which mainly inform the shape of the input and the condition to
         the neural network.
 
@@ -51,7 +51,7 @@ class MaskedVectorFieldEstimatorBuilder(Protocol):
 
         Args:
             inputs: Simulation outputs.
-            conditioning_mask: Mask defining which nodes in `inputs` are
+            condition_mask: Mask defining which nodes in `inputs` are
                 latent or observed
             edge_mask: Mask defining dependencies among nodes in `inputs`,
                 it is the equivalent of the adjacency mask in a DAG.
@@ -106,7 +106,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
             vector_field_estimator_builder: Neural network architecture for the
                 vector field estimator. Can be a string (e.g. 'simformer' or 'ada_mlp')
                 or a callable that implements the `VectorFieldEstimatorBuilder` protocol
-                with `__call__` that receives `inputs`, `conditioning_mask`,
+                with `__call__` that receives `inputs`, `condition_mask`,
                 and `edge_mask` and returns a `MaskedConditionalVectorFieldEstimator`.
             device: Device to run the training on.
             logging_level: Logging level for the training. Can be an integer or a
@@ -152,7 +152,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
     def append_simulations(
         self,
         inputs: Tensor,
-        conditioning_masks: Tensor,  # ! Could be Optional, default Bernoulli
+        condition_masks: Tensor,  # ! Could be Optional, default Bernoulli
         edge_masks: Tensor,  # ! Optional, Default = Ones
         proposal: Optional[DirectPosterior] = None,
         exclude_invalid_x: Optional[bool] = None,
@@ -168,7 +168,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
 
         Args:
             inputs: Simulation outputs.
-            conditioning_masks: Mask defining which nodes in `inputs` are latent
+            condition_masks: Mask defining which nodes in `inputs` are latent
                 or observed.
             edge_masks: Mask defining dependencies among nodes in `inputs`,
                 equivalent to the adjacency mask in the DAG,
@@ -214,7 +214,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         )
 
         inputs = inputs[is_valid_input]
-        conditioning_masks = conditioning_masks[is_valid_input]
+        condition_masks = condition_masks[is_valid_input]
         edge_masks = edge_masks[is_valid_input]
 
         # Check for problematic z-scoring
@@ -232,7 +232,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         prior_masks = mask_sims_from_prior(int(current_round > 0), inputs.size(0))
 
         self._inputs_roundwise.append(inputs)
-        self._conditioning_masks_roundwise.append(conditioning_masks)
+        self._condition_masks_roundwise.append(condition_masks)
         self._edge_masks_roundwise.append(edge_masks)
         self._prior_masks.append(prior_masks)  # ! Makes sense only for multi-round
 
@@ -405,7 +405,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
                 # Get batches on current device.
                 (
                     inputs_batch,
-                    conditioning_masks_batch,
+                    condition_masks_batch,
                     edge_masks_batch,
                     prior_masks_batch,
                 ) = (
@@ -417,7 +417,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
 
                 train_losses = self._loss(
                     inputs=inputs_batch,
-                    conditioning_masks=conditioning_masks_batch,
+                    condition_masks=condition_masks_batch,
                     edge_masks=edge_masks_batch,
                     masks=prior_masks_batch,
                     proposal=proposal,
@@ -461,7 +461,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
                 for batch in val_loader:
                     (
                         inputs_batch,
-                        conditioning_masks_batch,
+                        condition_masks_batch,
                         edge_masks_batch,
                         prior_masks_batch,
                     ) = (
@@ -480,8 +480,8 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
                     inputs_batch = inputs_batch.repeat(
                         times_batch, *([1] * (inputs_batch.ndim - 1))
                     )
-                    conditioning_masks_batch = conditioning_masks_batch.repeat(
-                        times_batch, *([1] * (conditioning_masks_batch.ndim - 1))
+                    condition_masks_batch = condition_masks_batch.repeat(
+                        times_batch, *([1] * (condition_masks_batch.ndim - 1))
                     )
                     edge_masks_batch = edge_masks_batch.repeat(
                         times_batch, *([1] * (edge_masks_batch.ndim - 1))
@@ -499,7 +499,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
                     # Take negative loss here to get validation log_prob.
                     val_losses = self._loss(
                         inputs=inputs_batch,
-                        conditioning_masks=conditioning_masks_batch,
+                        condition_masks=condition_masks_batch,
                         edge_masks=edge_masks_batch,
                         masks=prior_masks_batch,
                         proposal=proposal,
@@ -714,7 +714,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
     def _loss(
         self,
         inputs: Tensor,
-        conditioning_masks: Tensor,
+        condition_masks: Tensor,
         edge_masks: Tensor,
         masks: Tensor,
         proposal: Optional[Any],
@@ -730,7 +730,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
 
         Args:
             inputs: Simulation outputs :math:`x`.
-            conditioning_masks: Mask definining which nodes in `inputs` are
+            condition_masks: Mask definining which nodes in `inputs` are
                 latent or observed.
             edge_masks: Mask definining dependencies between nodes in `inputs`.
             masks: Prior masks. Ignored for now.
@@ -753,7 +753,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         if self._round == 0 or force_first_round_loss:
             # First round loss.
             loss = self._neural_net.loss(
-                inputs, conditioning_masks, edge_masks, times=times
+                inputs, condition_masks, edge_masks, times=times
             )
         else:
             raise NotImplementedError(
