@@ -565,7 +565,7 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
             "_std_base", torch.empty(1, *self.input_shape).fill_(std_base)
         )
 
-    def get_unmasked_wrapper(
+    def build_unmasked_conditional_score_estimator(
         self, condition_mask_for_posterior: Tensor, edge_mask_for_posterior: Tensor
     ) -> ConditionalVectorFieldEstimator:
         """
@@ -573,11 +573,12 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
         for a fixed condition_mask and edge_mask.
         """
 
-        # Create a wrapper that captures `self` and the masks
         class UnmaskedWrapper(ConditionalVectorFieldEstimator):
-            def __init__(self, original_estimator, fixed_cond_mask, fixed_edge_mask):
+            def __init__(
+                self, original_estimator, fixed_condition_mask, fixed_edge_mask
+            ):
                 # fixed_cond_mask is assumed to be of shape [T] (number of nodes)
-                # 1 indicates observed (x_o), 0 indicates latent (theta)
+                # 1 indicates observed, 0 indicates latent
                 # original input shape is assumed to be [T, F] as parameter
                 # but [B, T, F] at loss() and forward() time
 
@@ -585,8 +586,8 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                 T, F = original_estimator.input_shape
 
                 # Count number of latent and observed nodes
-                num_latent = int(torch.sum(fixed_cond_mask == 0).item())
-                num_observed = int(torch.sum(fixed_cond_mask == 1).item())
+                num_latent = int(torch.sum(fixed_condition_mask == 0).item())
+                num_observed = int(torch.sum(fixed_condition_mask == 1).item())
 
                 assert num_latent + num_observed == T, (
                     "Number of latent and observed nodes in condition mask should"
@@ -612,79 +613,99 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                 self.MARGINALS_DEFINED = original_estimator.MARGINALS_DEFINED
 
                 self._original_estimator = original_estimator
-                self._fixed_cond_mask = fixed_cond_mask
+                self._fixed_condition_mask = fixed_condition_mask
                 self._fixed_edge_mask = fixed_edge_mask
 
                 # Extract indices for latent (0) and observed (1) nodes
-                # from the fixed_cond_mask
-                self._latent_idx = (fixed_cond_mask == 0).nonzero(as_tuple=True)[0]
-                self._observed_idx = (fixed_cond_mask == 1).nonzero(as_tuple=True)[0]
+                # from the fixed_condition_mask
+                self._latent_idx = (fixed_condition_mask == 0).nonzero(as_tuple=True)[0]
+                self._observed_idx = (fixed_condition_mask == 1).nonzero(as_tuple=True)[
+                    0
+                ]
 
-            # Alright so, I need to decide how to design this wrapper,
-            # if I take the surrounding code as reference I skip passing
-            # masks to score, loss and forward many times
-            # Should I rather take as reference an implementation of a child class?
-            # e.g. MaskedConditionalScoreEstimator?
-
-            # ? Should I pass condition mask and edge mask here?
-            # ? Since later score is called, but without anything passing it will
-            # ? automatically generate masks internally...
-            def forward(
-                self, input_data: Tensor, condition_data: Tensor, **kwargs
-            ) -> Tensor:
-                # Assemble full input from theta (input) and x_o (condition)
-                full_inputs_tensor = self._assemble_full_inputs(
-                    input_data, condition_data
-                )
-                # Call the original masked estimator's forward method
-                return self._original_estimator.forward(full_inputs_tensor, **kwargs)
-
-            # ? Should I pass condition mask and edge mask here?
-            # ? Since later score is called, but without anything passing it will
-            # ? automatically generate masks internally...
-            def loss(self, input, condition, **kwargs):
-                # Assemble full input from theta (input) and x_o (condition)
+            def forward(self, input: Tensor, condition: Tensor, **kwargs) -> Tensor:
+                # Assemble full input from give input and condition
                 full_inputs_tensor = self._assemble_full_inputs(input, condition)
-                # Call the original estimator's loss
                 B = full_inputs_tensor.shape[0]
-                expanded_cond_mask = self._fixed_cond_mask.unsqueeze(0).expand(B, -1)
+                expanded_cond_mask = self._fixed_condition_mask.unsqueeze(0).expand(
+                    B, -1
+                )
                 expanded_edge_mask = self._fixed_edge_mask.unsqueeze(0).expand(
                     B, -1, -1
                 )
+                time = kwargs.pop('time')
+                # Call the original masked estimator's forward method
+                return self._original_estimator.forward(
+                    input=full_inputs_tensor,
+                    time=time,
+                    condition_mask=expanded_cond_mask,
+                    edge_mask=expanded_edge_mask,
+                )
+
+            def score(self, input: Tensor, condition: Tensor, t: Tensor) -> Tensor:
+                return self(input=input, condition=condition, time=t)
+
+            def loss(
+                self,
+                input: Tensor,
+                condition: Tensor,
+                **kwargs,
+            ) -> Tensor:
+                # Assemble full input from give input and condition
+                full_inputs_tensor = self._assemble_full_inputs(input, condition)
+                # Call the original estimator's loss
+                B = full_inputs_tensor.shape[0]
+                expanded_cond_mask = self._fixed_condition_mask.unsqueeze(0).expand(
+                    B, -1
+                )
+                expanded_edge_mask = self._fixed_edge_mask.unsqueeze(0).expand(
+                    B, -1, -1
+                )
+                times = kwargs.pop('times')
+                control_variate = kwargs.pop('control_variate', True)
+                control_variate_threshold = kwargs.pop('control_variate_threshold', 0.3)
                 return self._original_estimator.loss(
                     full_inputs_tensor,
                     expanded_cond_mask,
                     expanded_edge_mask,
-                    **kwargs,
+                    times,
+                    control_variate,
+                    control_variate_threshold,
                 )
 
-            # ? Should I pass condition mask and edge mask here?
-            # ? Since later score is called, but without anything passing it will
-            # ? automatically generate masks internally...
-            def ode_fn(self, input, condition, times):
-                # Assemble full input from theta (input) and x_o (condition)
+            def ode_fn(self, input: Tensor, condition: Tensor, times: Tensor) -> Tensor:
+                # Assemble full input from give input and condition
                 full_inputs_tensor = self._assemble_full_inputs(input, condition)
                 # Call the original estimator's ode_fn
+                B = full_inputs_tensor.shape[0]
+                expanded_cond_mask = self._fixed_condition_mask.unsqueeze(0).expand(
+                    B, -1
+                )
+                expanded_edge_mask = self._fixed_edge_mask.unsqueeze(0).expand(
+                    B, -1, -1
+                )
                 return self._original_estimator.ode_fn(
                     full_inputs_tensor,
                     times,
+                    expanded_cond_mask,
+                    expanded_edge_mask,
                 )
 
             # ! Implement other methods from ConditonalEstimator and
             # ! ConditionalectorFieldEstimator:
-            # ! You'd also need to override score, drift_fn,
-            # ! diffusion_fn, ode_fn similarly
-            # ! All these methods would internally call _assemble_full_inputs
-            # ! and then the original_estimator's corresponding masked method.
+            # You'd also need to override score, drift_fn,
+            # diffusion_fn, ode_fn similarly
+            # All these methods would internally call _assemble_full_inputs
+            # and then the original_estimator's corresponding masked method.
 
-            def _assemble_full_inputs(self, theta_part, x_part):
+            def _assemble_full_inputs(self, input_part, conditon_part):
                 """
-                Assemble the full input tensor from theta_part (latent)
+                Assemble the full input tensor from input_part (latent)
                 and x_part (observed) according to fixed_cond_mask
                 passed at init time.
 
                 Args:
-                    theta_part: Tensor of shape (B, num_latent, F)
+                    conditon_part: Tensor of shape (B, num_latent, F)
                     x_part: Tensor of shape (B, num_observed, F)
 
                 Returns:
@@ -692,40 +713,40 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                 """
 
                 # Get batch shape and feature dimension
-                B = theta_part.shape[0]
-                num_latent = theta_part.shape[1]
-                num_observed = x_part.shape[1]
-                F = theta_part.shape[2]
+                B = input_part.shape[0]
+                num_latent = input_part.shape[1]
+                num_observed = conditon_part.shape[1]
+                F = input_part.shape[2]
                 T = num_latent + num_observed
 
                 # Prepare output tensor
                 full_inputs = torch.zeros(
-                    B, T, F, dtype=theta_part.dtype, device=theta_part.device
+                    B, T, F, dtype=input_part.dtype, device=input_part.device
                 )
-                # Place theta_part and x_part in the correct positions
-                full_inputs[:, self._latent_idx, :] = theta_part
-                full_inputs[:, self._observed_idx, :] = x_part
+                # Place input_part and conditon_part in the correct positions
+                full_inputs[:, self._latent_idx, :] = input_part
+                full_inputs[:, self._observed_idx, :] = conditon_part
 
                 return full_inputs
 
             def _disassemble_full_inputs(self, full_inputs):
                 """
-                Split the full input tensor into theta_part (latent)
-                and x_part (observed) according to fixed_cond_mask
+                Split the full input tensor into input_part (latent)
+                and condition_part (observed) according to fixed_cond_mask
                 passed at init time.
 
                 Args:
                     full_inputs: Tensor of shape (B, T, F)
 
                 Returns:
-                    theta_part: Tensor of shape (B, num_latent, F)
-                    x_part: Tensor of shape (B, num_observed, F)
+                    input_part: Tensor of shape (B, num_latent, F)
+                    condition_part: Tensor of shape (B, num_observed, F)
                 """
 
-                theta_part = full_inputs[:, self._latent_idx, :]
-                x_part = full_inputs[:, self._observed_idx, :]
+                input_part = full_inputs[:, self._latent_idx, :]
+                condition_part = full_inputs[:, self._observed_idx, :]
 
-                return theta_part, x_part
+                return input_part, condition_part
 
         return UnmaskedWrapper(
             self, condition_mask_for_posterior, edge_mask_for_posterior
