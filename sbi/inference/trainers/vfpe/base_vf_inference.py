@@ -697,7 +697,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
             device = str(next(masked_vector_field_estimator.parameters()).device)
 
         posterior = VectorFieldPosterior(
-            masked_vector_field_estimator.get_unmasked_wrapper(
+            masked_vector_field_estimator.build_unmasked_conditional_score_estimator(
                 condition_mask, edge_mask
             ),
             prior,
