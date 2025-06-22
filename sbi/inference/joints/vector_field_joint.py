@@ -29,6 +29,7 @@ from sbi.utils.sbiutils import gradient_ascent, within_support
 from sbi.utils.torchutils import ensure_latent_batched
 
 
+# TODO: Not finished yet
 class VectorFieldJoint(NeuralJoint):
     r"""Arbitrary joint based score-matching estimators.
 

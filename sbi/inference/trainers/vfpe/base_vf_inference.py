@@ -612,6 +612,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
 
         return converged
 
+    # TODO: not implemented yet
     def _build_arbitrary_joint(
         self,
         conditional_mask: Tensor,
