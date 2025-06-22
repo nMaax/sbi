@@ -697,7 +697,7 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                     expanded_edge_mask,
                 )
 
-            # ! Implement other methods from ConditonalEstimator and
+            # ! Implement other methods from ConditionalEstimator and
             # ! ConditionalectorFieldEstimator:
             # You'd also need to override score, drift_fn,
             # diffusion_fn, ode_fn similarly
@@ -723,14 +723,14 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
 
             # ------------------------- UTILITIES ------------------------------
 
-            def _assemble_full_inputs(self, input_part, conditon_part):
+            def _assemble_full_inputs(self, input_part, condition_part):
                 """
                 Assemble the full input tensor from input_part (latent)
                 and x_part (observed) according to fixed_cond_mask
                 passed at init time.
 
                 Args:
-                    conditon_part: Tensor of shape (B, num_latent, F)
+                    condition_part: Tensor of shape (B, num_latent, F)
                     x_part: Tensor of shape (B, num_observed, F)
 
                 Returns:
@@ -740,7 +740,7 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                 # Get batch shape and feature dimension
                 B = input_part.shape[0]
                 num_latent = input_part.shape[1]
-                num_observed = conditon_part.shape[1]
+                num_observed = condition_part.shape[1]
                 F = input_part.shape[2]
                 T = num_latent + num_observed
 
@@ -748,9 +748,9 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                 full_inputs = torch.zeros(
                     B, T, F, dtype=input_part.dtype, device=input_part.device
                 )
-                # Place input_part and conditon_part in the correct positions
+                # Place input_part and condition_part in the correct positions
                 full_inputs[:, self._latent_idx, :] = input_part
-                full_inputs[:, self._observed_idx, :] = conditon_part
+                full_inputs[:, self._observed_idx, :] = condition_part
 
                 return full_inputs
 
