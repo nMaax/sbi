@@ -605,9 +605,10 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                     condition_shape=self._new_condition_shape,
                     t_min=original_estimator.t_min,
                     t_max=original_estimator.t_max,
-                    mean_base=original_estimator.mean_base,
-                    std_base=original_estimator.std_base,
+                    mean_base=0.0,  # original_estimator.mean_base,
+                    std_base=1.0,  # original_estimator.std_base,
                 )
+
                 self.SCORE_DEFINED = original_estimator.SCORE_DEFINED
                 self.SDE_DEFINED = original_estimator.SDE_DEFINED
                 self.MARGINALS_DEFINED = original_estimator.MARGINALS_DEFINED
@@ -622,6 +623,12 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                 self._observed_idx = (fixed_condition_mask == 1).nonzero(as_tuple=True)[
                     0
                 ]
+
+                latent_mean_base = original_estimator.mean_base[:, self._latent_idx, :]
+                latent_std_base = original_estimator.std_base[:, self._latent_idx, :]
+
+                self.register_buffer("_mean_base", latent_mean_base.clone().detach())
+                self.register_buffer("_std_base", latent_std_base.clone().detach())
 
             def forward(self, input: Tensor, condition: Tensor, **kwargs) -> Tensor:
                 # Assemble full input from give input and condition
