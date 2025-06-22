@@ -640,9 +640,6 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         else:
             device = str(next(vector_field_estimator.parameters()).device)
 
-        # ? Should I do a MaskedVectorFieldPosterior?
-        # ! Not MaskedVectorFieldJoint, just VectorFieldJoint
-        # ! Since after init the edge and cond masks are set
         joint = VectorFieldJoint(
             vector_field_estimator,
             prior,
@@ -669,29 +666,16 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         sample_with: str = "sde",
         **kwargs,
     ) -> VectorFieldPosterior:
-        r"""Build posterior from the vector field estimator.
-
-        For NPSE, the posterior distribution that is returned here implements the
-        following functionality over the raw neural density estimator:
-        - correct the calculation of the log probability such that it compensates for
-            the leakage.
-        - reject samples that lie outside of the prior bounds.
+        r"""Build an arbitrary posterior from condition mask,
+        edge mask, and the vector field estimator.
 
         Args:
-            vector_field_estimator: The vector field estimator that the posterior
-                is based on. If `None`, use the latest vector field estimator that was
-                trained.
-            prior: Prior distribution.
-            sample_with: Method to use for sampling from the posterior. Can be one of
-                'sde' (default) or 'ode'. The 'sde' method uses the vector field to
-                do a Langevin diffusion step, while the 'ode' solves a probabilistic ODE
-                with a numerical ODE solver.
-            **kwargs: Additional keyword arguments passed to
-                `VectorFieldBasedPotential`.
+            ...
 
         Returns:
             Posterior $p(\theta|x)$  with `.sample()` and `.log_prob()` methods.
         """
+
         if prior is None:
             cls_name = self.__class__.__name__
             assert self._prior is not None, (
@@ -712,7 +696,9 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
             device = str(next(masked_vector_field_estimator.parameters()).device)
 
         posterior = VectorFieldPosterior(
-            masked_vector_field_estimator.unmask(condition_mask, edge_mask),
+            masked_vector_field_estimator.get_unmasked_wrapper(
+                condition_mask, edge_mask
+            ),
             prior,
             device=device,
             sample_with=sample_with,

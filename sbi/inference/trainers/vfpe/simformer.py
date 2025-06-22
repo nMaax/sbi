@@ -133,10 +133,6 @@ class Simformer(MaskedVectorFieldInference):
         sample_with: str = "sde",
         **kwargs,
     ) -> VectorFieldPosterior:
-        # ! Classical pipeline, not wrap joint
-        # ! Convert MaskedConditionalVectorFieldEstimator
-        # ! to ConditionalVectorFieldEstimator
-
         return self._build_posterior(
             condition_mask,
             edge_mask,

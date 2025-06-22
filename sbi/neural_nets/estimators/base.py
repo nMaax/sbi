@@ -565,7 +565,7 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
             "_std_base", torch.empty(1, *self.input_shape).fill_(std_base)
         )
 
-    def unmask(
+    def get_unmasked_wrapper(
         self, conditioning_mask_for_posterior: Tensor, edge_mask_for_posterior: Tensor
     ) -> ConditionalVectorFieldEstimator:
         """
