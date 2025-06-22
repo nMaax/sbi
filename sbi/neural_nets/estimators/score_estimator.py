@@ -518,22 +518,31 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         else:
             raise ValueError(f"Weight function {weight_fn} not recognized.")
 
-    # ? Should I pass condition mask and edge mask here?
-    # ? Since later score is called, but without anything passing it will
-    # ? automatically generate masks internally...
-    def ode_fn(self, input: Tensor, times: Tensor) -> Tensor:
+    def ode_fn(
+        self,
+        input: Tensor,
+        times: Tensor,
+        condition_mask: Optional[Tensor] = None,
+        edge_mask: Optional[Tensor] = None,
+    ) -> Tensor:
         r"""ODE flow function of the score estimator.
 
         For reference, see Equation 13 in [1]_.
 
         Args:
             input: variable whose distribution is estimated.
-            t: Time.
+            times: Time.
+            condition_mask: Mask indicating which nodes are observed (conditioned on)
+                or latent (conditioned off).
+            edge_mask: Mask for edges in the DAG, i.e., dependencies between
+                variables (nodes).
 
         Returns:
             ODE flow function value at a given time.
         """
-        score = self.score(input=input, t=times)
+        score = self.score(
+            input=input, t=times, condition_mask=condition_mask, edge_mask=edge_mask
+        )
         f = self.drift_fn(input, times)
         g = self.diffusion_fn(input, times)
         v = f - 0.5 * g**2 * score
