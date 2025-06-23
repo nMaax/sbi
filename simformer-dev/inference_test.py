@@ -7,6 +7,7 @@ from sbi.utils import BoxUniform
 _ = torch.manual_seed(0)
 
 NUM_SIM_NODES = 2 #3  # e.g., node 0 is 'theta', node 1 is 'x1', node 2 is 'x2'
+NUM_LAT_NODES = 1
 NUM_NODE_FEATURES = 3  # e.g., both theta1, x1 and x2 have 3 features
 
 
@@ -48,8 +49,8 @@ def simformer_simulator(num_simulations):
 
 # The actual diffusion will use an implicit Gaussian.
 # This prior is used for bounding box checks if samples go out of reasonable range
-prior_low = -5 * torch.ones(NUM_SIM_NODES * NUM_NODE_FEATURES)
-prior_high = 5 * torch.ones(NUM_SIM_NODES * NUM_NODE_FEATURES)
+prior_low = -500 * torch.ones(NUM_LAT_NODES, NUM_NODE_FEATURES)
+prior_high = 500 * torch.ones(NUM_LAT_NODES, NUM_NODE_FEATURES)
 prior = BoxUniform(low=prior_low, high=prior_high, device="gpu")
 
 # %%
@@ -62,7 +63,7 @@ inference: Simformer = Simformer(
 )
 
 # %%
-num_simulations = 2000
+num_simulations = 100
 sim_inputs, sim_condition_masks, sim_edge_masks = simformer_simulator(
     num_simulations
 )
@@ -86,12 +87,12 @@ print(density_estimator)
 import matplotlib.pyplot as plt
 
 # Plot the validation loss from the inference summary
-validation_loss = inference.summary['validation_loss']
-plt.plot(validation_loss)
-plt.xlabel('Epoch')
-plt.ylabel('Validation Loss')
-plt.title('Validation Loss over Epochs')
-plt.show()
+# validation_loss = inference.summary['validation_loss']
+# plt.plot(validation_loss)
+# plt.xlabel('Epoch')
+# plt.ylabel('Validation Loss')
+# plt.title('Validation Loss over Epochs')
+# plt.show()
 
 # %%
 
@@ -108,10 +109,15 @@ posterior = inference.build_posterior(
 print(posterior)
 
 # %%
-x_obs = torch.as_tensor([0.8, 0.6, 0.4])
+x_obs = torch.as_tensor([[0.5, -1.2, 0.8]])
 
 # %%
-samples = posterior.sample((10000,), x=x_obs)
+
+#! At training time, sbi handles data of shape [B, T, F]
+#! But at sample time, it manages [B, num_batches, T, F]
+#! as it seeks to generate multiple thetas in parallel given the
+#! multiple "parallel" x_o passed
+samples = posterior.sample((5,), x=x_obs)
 
 # %%
 from sbi.analysis import pairplot
