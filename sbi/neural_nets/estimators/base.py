@@ -647,13 +647,13 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                 )
                 time = kwargs.pop('time')
                 # Call the original masked estimator's forward method
-                full_out = self._original_estimator.forward(
+                full_outputs = self._original_estimator.forward(
                     input=full_inputs_tensor,
                     time=time,
                     condition_mask=expanded_cond_mask,
                     edge_mask=expanded_edge_mask,
                 )
-                latent_out, condition_out = self._disassemble_full_inputs(full_out)
+                latent_out, condition_out = self._disassemble_full_outputs(full_outputs)
                 return latent_out
 
             def loss(
@@ -664,6 +664,7 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
             ) -> Tensor:
                 # Assemble full input from give input and condition
                 full_inputs_tensor = self._assemble_full_inputs(input, condition)
+
                 # Call the original estimator's loss
                 B = full_inputs_tensor.shape[0]
                 expanded_cond_mask = self._fixed_condition_mask.unsqueeze(0).expand(
@@ -672,9 +673,12 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                 expanded_edge_mask = self._fixed_edge_mask.unsqueeze(0).expand(
                     B, -1, -1
                 )
+
+                # Score Estimator specific kwargs
                 times = kwargs.pop('times')
                 control_variate = kwargs.pop('control_variate', True)
                 control_variate_threshold = kwargs.pop('control_variate_threshold', 0.3)
+
                 return self._original_estimator.loss(
                     full_inputs_tensor,
                     expanded_cond_mask,
@@ -703,13 +707,6 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                     expanded_cond_mask,
                     expanded_edge_mask,
                 )
-
-            # ! Implement other methods from ConditionalEstimator and
-            # ! ConditionalectorFieldEstimator:
-            # You'd also need to override score, drift_fn,
-            # diffusion_fn, ode_fn similarly
-            # All these methods would internally call _assemble_full_inputs
-            # and then the original_estimator's corresponding masked method.
 
             # -------------------------- SDE METHODS --------------------------
 
@@ -748,9 +745,11 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                 return self._original_estimator.std_fn(times)
 
             def drift_fn(self, input: Tensor, times: Tensor) -> Tensor:
+                # ? Should manage shapes here too?
                 return self._original_estimator.drift_fn(input, times)
 
             def diffusion_fn(self, input: Tensor, times: Tensor) -> Tensor:
+                # ? Should manage shapes here too?
                 return self._original_estimator.diffusion_fn(input, times)
 
             # ------------------------- UTILITIES ------------------------------
@@ -786,7 +785,7 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
 
                 return full_inputs
 
-            def _disassemble_full_inputs(self, full_inputs):
+            def _disassemble_full_outputs(self, full_inputs):
                 """
                 Split the full input tensor into input_part (latent)
                 and condition_part (observed) according to fixed_cond_mask
