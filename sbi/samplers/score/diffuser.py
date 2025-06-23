@@ -101,6 +101,7 @@ class Diffuser:
         Returns:
             Tensor: Initial noise samples.
         """
+        # ? Will this always be 1?
         num_batches = (
             1 if self.predictor.potential_fn.x_is_iid else self.batch_shape.numel()
         )
