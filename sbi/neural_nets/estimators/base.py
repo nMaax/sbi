@@ -714,7 +714,32 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
             # -------------------------- SDE METHODS --------------------------
 
             def score(self, input: Tensor, condition: Tensor, t: Tensor) -> Tensor:
-                return self(input=input, condition=condition, time=t)
+                # ! NOTE: I manage shapes of type [A, B, T, F] here, should I move
+                # ! this in _assemble_full_inputs() ?
+                # Check input dimensionality
+                original_shape = input.shape
+                if input.dim() > 3:
+                    # Merge first two dimensions (e.g., [A, B, T, F] -> [A*B, T, F])
+                    merged_shape = (-1,) + input.shape[-2:]
+                    input_reshaped = input.reshape(merged_shape)
+
+                    # ? Should I do this?
+                    # condition_reshaped = condition.reshape(merged_shape)
+                    # t_reshaped = t.reshape(
+                    #     -1, *t.shape[input.dim() - 3 + 1 :]
+                    # ) if t.dim() > 1 else t
+
+                    # Call self with reshaped inputs
+                    latent_score = self(
+                        input=input_reshaped, condition=condition, time=t
+                    )
+
+                    # Restore original batch shape
+                    out_shape = original_shape[:-2] + latent_score.shape[-2:]
+                    latent_score = latent_score.reshape(out_shape)
+                else:
+                    latent_score = self(input=input, condition=condition, time=t)
+                return latent_score
 
             def mean_t_fn(self, times: Tensor) -> Tensor:
                 return self._original_estimator.mean_t_fn(times)
