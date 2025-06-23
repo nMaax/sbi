@@ -6,6 +6,7 @@ From merge_flow_builders_to_current_main:
 
 ## TODO
 
+- Solve comments around codebase (# ? and # !)
 - Corrections by Manuel: Simformer in NeuralNets renamed in SimformerNet, etc. (search # ? and # !)
 - Condition and Edge mask multiple if handling in VE/ScoreEstimator loss
 - Optimizations around code, especially at training and inference time in Score Estimator and SimformerNet
@@ -18,3 +19,26 @@ From merge_flow_builders_to_current_main:
 - Finish up the joint classes if you have time
 - Decide at what level you want to see masks to appear among parameters of methods, and where not, also decide accordingly the implementation of the Wrapper as it must be a *callable* by itself
 - Decide where you want to generate the automatic edge and condition masks
+- For the moment you are doing an inference test where some dimensions are of size 1 (e.g. NUM_LAT_NODES = 1 etc.) make more strong case (adjust condition and edge masks accordingly, also prior boundaries and x_o)
+
+## Questions
+
+In Diffuser.initialize() will this always be 1?
+
+	num_batches = (
+		1 if self.predictor.potential_fn.x_is_iid else self.batch_shape.numel()
+	)
+
+Also in plot.py I added .cpu() here:
+
+def ensure_numpy(t: Union[np.ndarray, torch.Tensor]) -> np.ndarray:
+    """
+    Returns np.ndarray if torch.Tensor was provided.
+
+    Used because samples_nd() can only handle np.ndarray.
+    """
+    if isinstance(t, torch.Tensor):
+        return t.cpu().numpy()
+    elif not isinstance(t, np.ndarray):
+        return np.array(t)
+    return t
