@@ -647,12 +647,14 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                 )
                 time = kwargs.pop('time')
                 # Call the original masked estimator's forward method
-                return self._original_estimator.forward(
+                full_out = self._original_estimator.forward(
                     input=full_inputs_tensor,
                     time=time,
                     condition_mask=expanded_cond_mask,
                     edge_mask=expanded_edge_mask,
                 )
+                latent_out, condition_out = self._disassemble_full_inputs(full_out)
+                return latent_out
 
             def loss(
                 self,
