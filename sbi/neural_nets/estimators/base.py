@@ -609,13 +609,18 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                     std_base=1.0,  # Bypassing constraints, will override later
                 )
 
+                # Ensure input_part and condition_part are on the same device
+                device = next(original_estimator.net.parameters()).device
+
                 self.SCORE_DEFINED = original_estimator.SCORE_DEFINED
                 self.SDE_DEFINED = original_estimator.SDE_DEFINED
                 self.MARGINALS_DEFINED = original_estimator.MARGINALS_DEFINED
 
                 self._original_estimator = original_estimator
-                self._fixed_condition_mask = fixed_condition_mask
-                self._fixed_edge_mask = fixed_edge_mask
+
+                # ? Maybe there is a better method to handle device here?
+                self._fixed_condition_mask = fixed_condition_mask.to(device)
+                self._fixed_edge_mask = fixed_edge_mask.to(device)
 
                 # Extract indices for latent (0) and observed (1) nodes
                 # from the fixed_condition_mask
