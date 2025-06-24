@@ -6,35 +6,29 @@ from sbi.utils import BoxUniform
 
 _ = torch.manual_seed(0)
 
-NUM_SIM_NODES = 2 #3  # e.g., node 0 is 'theta', node 1 is 'x1', node 2 is 'x2'
-NUM_LAT_NODES = 1
-NUM_NODE_FEATURES = 3  # e.g., both theta1, x1 and x2 have 3 features
-
+NUM_SIM_NODES = 4
+NUM_NODE_FEATURES = 7
+NUM_OBS_NODES = 2
+NUM_LAT_NODES = NUM_SIM_NODES - NUM_OBS_NODES
 
 def simformer_simulator(num_simulations):
     theta1 = torch.randn(num_simulations, NUM_NODE_FEATURES) * 3.0
+    theta2 = torch.randn(num_simulations, NUM_NODE_FEATURES) * 1.5 + 2.0
     x1 = 2 * torch.sin(theta1) + torch.randn(num_simulations, NUM_NODE_FEATURES) * 0.5
-    # x2 = 0.1 * theta1**2 + 0.5 * torch.abs(x1) * torch.randn(
-    #     num_simulations, NUM_NODE_FEATURES
-    # )
-
-    # inputs_tensor = torch.stack([theta1, x1, x2], dim=1)
-    inputs_tensor = torch.stack([theta1, x1], dim=1)
-
-    # True for observed, False for latent.
-    # Note: This mask is for a single 'input' sample. It gets broadcasted for the batch.
-    condition_mask_single_sample = torch.zeros((NUM_SIM_NODES,), dtype=torch.bool)
-    condition_mask_single_sample[1] = True  # Node 1 (index 1) is observed
-    condition_masks = condition_mask_single_sample.unsqueeze(0).expand(
-        num_simulations, NUM_SIM_NODES
+    x2 = 0.1 * theta1**2 + 0.3 * theta2 + 0.5 * torch.abs(x1) * torch.randn(
+        num_simulations, NUM_NODE_FEATURES
     )
 
-    # True for an edge from row to column.
-    # ! This cause nan/inf values in attention layer within the block since mask was non-meaningful
-    # edge_mask_single_sample = torch.zeros((NUM_SIM_NODES, NUM_SIM_NODES), dtype=torch.bool)
-    # edge_mask_single_sample[0, 1] = True # Edge from node 0 to node 1
+    inputs_tensor = torch.stack([theta1, theta2, x1, x2], dim=1)
 
-    # ! This solves the issue (no mask)
+    condition_masks = torch.bernoulli(
+        torch.full((num_simulations, NUM_SIM_NODES), 0.5)
+    ).bool()
+    for i in range(num_simulations):
+        if not condition_masks[i].any():
+            rand_idx = torch.randint(0, NUM_SIM_NODES, (1,))
+            condition_masks[i, rand_idx] = True
+
     edge_mask_single_sample = torch.ones(
         (NUM_SIM_NODES, NUM_SIM_NODES), dtype=torch.bool
     )
@@ -49,8 +43,8 @@ def simformer_simulator(num_simulations):
 
 # The actual diffusion will use an implicit Gaussian.
 # This prior is used for bounding box checks if samples go out of reasonable range
-prior_low = -500 * torch.ones(NUM_LAT_NODES, NUM_NODE_FEATURES)
-prior_high = 500 * torch.ones(NUM_LAT_NODES, NUM_NODE_FEATURES)
+prior_low = -500 * torch.ones(NUM_LAT_NODES * NUM_NODE_FEATURES)
+prior_high = 500 * torch.ones(NUM_LAT_NODES * NUM_NODE_FEATURES)
 prior = BoxUniform(low=prior_low, high=prior_high, device="gpu")
 
 # %%
@@ -63,7 +57,7 @@ inference: Simformer = Simformer(
 )
 
 # %%
-num_simulations = 100
+num_simulations = 1000
 sim_inputs, sim_condition_masks, sim_edge_masks = simformer_simulator(
     num_simulations
 )
@@ -87,17 +81,18 @@ print(density_estimator)
 import matplotlib.pyplot as plt
 
 # Plot the validation loss from the inference summary
-# validation_loss = inference.summary['validation_loss']
-# plt.plot(validation_loss)
-# plt.xlabel('Epoch')
-# plt.ylabel('Validation Loss')
-# plt.title('Validation Loss over Epochs')
-# plt.show()
+validation_loss = inference.summary['validation_loss']
+plt.plot(validation_loss)
+plt.xlabel('Epoch')
+plt.ylabel('Validation Loss')
+plt.title('Validation Loss over Epochs')
+plt.show()
 
 # %%
 
 condition_mask_single_sample = torch.zeros((NUM_SIM_NODES,), dtype=torch.bool)
-condition_mask_single_sample[1] = True  # Node 1 (index 1) is observed
+condition_mask_single_sample[2] = True  # Index 2 is observed
+condition_mask_single_sample[3] = True  # Index 3 is observed
 
 edge_mask_single_sample = torch.ones((NUM_SIM_NODES, NUM_SIM_NODES), dtype=torch.bool)
 
@@ -106,33 +101,37 @@ posterior = inference.build_posterior(
     edge_mask=edge_mask_single_sample,
 )
 
-print(posterior)
+# %%
+x_obs = torch.as_tensor([
+    [0.5, -1.2, 0.8, 1.5, -1.8, -1.6, 0.1],
+    [-0.8, 0.3, 1.6, 0.9, -0.3, 0.25, 0.4],
+])
+x_obs = x_obs.view(1, -1)
 
 # %%
-x_obs = torch.as_tensor([[0.5, -1.2, 0.8]])
+
+samples = posterior.sample((100,), x=x_obs)
+samples = samples.reshape(-1, NUM_LAT_NODES, NUM_NODE_FEATURES)
+
+print(f"{samples.shape=}")
 
 # %%
 
-#! At training time, sbi handles data of shape [B, T, F]
-#! But at sample time, it manages [B, num_batches, T, F]
-#! as it seeks to generate multiple thetas in parallel given the
-#! multiple "parallel" x_o passed
-samples = posterior.sample((5,), x=x_obs)
+# TODO: Do not work with Simformer shapes
+
+# from sbi.analysis import pairplot
+
+# _ = pairplot(
+#     samples,
+#     limits=[[-2, 2]] * (NUM_LAT_NODES * NUM_NODE_FEATURES),
+#     figsize=(8, 8),
+#     labels=[fr"$\theta_{{{i+1}}}$" for i in range(NUM_LAT_NODES * NUM_NODE_FEATURES)],
+# )
 
 # %%
-from sbi.analysis import pairplot
+# theta_posterior = posterior.sample((10000,), x=x_obs)  # Sample from posterior.
+# x_predictive = simulator(theta_posterior)  # Simulate data from posterior.
 
-_ = pairplot(
-    samples,
-    limits=[[-2, 2], [-2, 2], [-2, 2]],
-    figsize=(5, 5),
-    labels=[r"$\theta_1$", r"$\theta_2$", r"$\theta_3$"],
-)
-
-# %%
-theta_posterior = posterior.sample((10000,), x=x_obs)  # Sample from posterior.
-x_predictive = simulator(theta_posterior)  # Simulate data from posterior.
-
-# %%
-print("Posterior predictives: ", torch.mean(x_predictive, axis=0))
-print("Observation: ", x_obs)
+# # %%
+# print("Posterior predictives: ", torch.mean(x_predictive, axis=0))
+# print("Observation: ", x_obs)
