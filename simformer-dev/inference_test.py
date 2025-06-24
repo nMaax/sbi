@@ -43,8 +43,8 @@ def simformer_simulator(num_simulations):
 
 # The actual diffusion will use an implicit Gaussian.
 # This prior is used for bounding box checks if samples go out of reasonable range
-prior_low = -500 * torch.ones(NUM_LAT_NODES * NUM_NODE_FEATURES)
-prior_high = 500 * torch.ones(NUM_LAT_NODES * NUM_NODE_FEATURES)
+prior_low = -50 * torch.ones(NUM_LAT_NODES * NUM_NODE_FEATURES)
+prior_high = 50 * torch.ones(NUM_LAT_NODES * NUM_NODE_FEATURES)
 prior = BoxUniform(low=prior_low, high=prior_high, device="gpu")
 
 # %%
@@ -57,7 +57,7 @@ inference: Simformer = Simformer(
 )
 
 # %%
-num_simulations = 1000
+num_simulations = 500
 sim_inputs, sim_condition_masks, sim_edge_masks = simformer_simulator(
     num_simulations
 )
@@ -119,14 +119,14 @@ print(f"{samples.shape=}")
 
 # TODO: Do not work with Simformer shapes
 
-# from sbi.analysis import pairplot
+from sbi.analysis import pairplot
 
-# _ = pairplot(
-#     samples,
-#     limits=[[-2, 2]] * (NUM_LAT_NODES * NUM_NODE_FEATURES),
-#     figsize=(8, 8),
-#     labels=[fr"$\theta_{{{i+1}}}$" for i in range(NUM_LAT_NODES * NUM_NODE_FEATURES)],
-# )
+_ = pairplot(
+    samples.reshape(-1, NUM_LAT_NODES * NUM_NODE_FEATURES),
+    limits=[[-2, 2]] * (NUM_LAT_NODES * NUM_NODE_FEATURES),
+    figsize=(8, 8),
+    labels=[fr"$\theta_{{{i+1}}}$" for i in range(NUM_LAT_NODES * NUM_NODE_FEATURES)],
+)
 
 # %%
 # theta_posterior = posterior.sample((10000,), x=x_obs)  # Sample from posterior.
