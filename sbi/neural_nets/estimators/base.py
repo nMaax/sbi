@@ -577,27 +577,20 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
             def __init__(
                 self, original_estimator, fixed_condition_mask, fixed_edge_mask
             ):
-                # fixed_cond_mask is assumed to be of shape [T] (number of nodes)
-                # 1 indicates observed, 0 indicates latent
-                # original input shape is assumed to be [T, F] as parameter
-                # but [B, T, F] at loss() and forward() time
+                T, F = original_estimator.input_shape  # (e.g., 4, 7)
 
-                # Assume input_shape is (T, F)
-                T, F = original_estimator.input_shape
+                num_latent = int(torch.sum(fixed_condition_mask == 0).item())  # e.g., 2
+                num_observed = int(
+                    torch.sum(fixed_condition_mask == 1).item()
+                )  # e.g., 2
 
                 # Count number of latent and observed nodes
-                num_latent = int(torch.sum(fixed_condition_mask == 0).item())
-                num_observed = int(torch.sum(fixed_condition_mask == 1).item())
-
-                assert num_latent + num_observed == T, (
-                    "Number of latent and observed nodes in condition mask should"
-                    "sum to {T} but {num_observed} observed"
-                    "and {num_latent} latent were given"
-                )
-
-                # Set new input_shape and condition_shape
-                self._new_input_shape = torch.Size((num_latent, F))
-                self._new_condition_shape = torch.Size((num_observed, F))
+                self._new_input_shape = torch.Size((
+                    num_latent * F,
+                ))  # e.g., (2 * 7,) = (14,)
+                self._new_condition_shape = torch.Size((
+                    num_observed * F,
+                ))  # e.g., (2 * 7,) = (14,)
 
                 super().__init__(
                     net=original_estimator.net,
@@ -608,6 +601,11 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                     mean_base=0.0,  # Bypassing constraints, will override later
                     std_base=1.0,  # Bypassing constraints, will override later
                 )
+
+                self._original_T = T
+                self._original_F = F
+                self._num_latent = num_latent
+                self._num_observed = num_observed
 
                 # Ensure input_part and condition_part are on the same device
                 device = next(original_estimator.net.parameters()).device
@@ -629,14 +627,34 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                     0
                 ]
 
-                latent_mean_base = original_estimator.mean_base[:, self._latent_idx, :]
-                latent_std_base = original_estimator.std_base[:, self._latent_idx, :]
+                # Get the mean/std for the latent nodes from the original estimator
+                # This gives shape [1, num_latent, F] (e.g., [1, 2, 7])
+                latent_mean_base_unflattened = original_estimator.mean_base[
+                    :, self._latent_idx, :
+                ]
+                latent_std_base_unflattened = original_estimator.std_base[
+                    :, self._latent_idx, :
+                ]
 
-                self.register_buffer("_mean_base", latent_mean_base.clone().detach())
-                self.register_buffer("_std_base", latent_std_base.clone().detach())
+                # They should be [1, num_latent * F] (e.g., [1, 14])
+                latent_mean_base_flattened = latent_mean_base_unflattened.flatten(
+                    start_dim=1
+                )
+                latent_std_base_flattened = latent_std_base_unflattened.flatten(
+                    start_dim=1
+                )
+
+                # Register these flattened buffers
+                self.register_buffer(
+                    "_mean_base", latent_mean_base_flattened.clone().detach()
+                )
+                self.register_buffer(
+                    "_std_base", latent_std_base_flattened.clone().detach()
+                )
 
             def forward(self, input: Tensor, condition: Tensor, **kwargs) -> Tensor:
                 # Assemble full input from give input and condition
+                # Take (B, T*F) and returns (B, T, F)
                 full_inputs_tensor = self._assemble_full_inputs(input, condition)
                 B = full_inputs_tensor.shape[0]
                 expanded_cond_mask = self._fixed_condition_mask.unsqueeze(0).expand(
@@ -645,7 +663,10 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                 expanded_edge_mask = self._fixed_edge_mask.unsqueeze(0).expand(
                     B, -1, -1
                 )
+
+                # Score Estimator specific kwargs
                 time = kwargs.pop('time')
+
                 # Call the original masked estimator's forward method
                 full_outputs = self._original_estimator.forward(
                     input=full_inputs_tensor,
@@ -653,6 +674,8 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                     condition_mask=expanded_cond_mask,
                     edge_mask=expanded_edge_mask,
                 )
+
+                # Take B, T, F and return (B, num_latent*F) and (B, num_observed*F)
                 latent_out, condition_out = self._disassemble_full_outputs(full_outputs)
                 return latent_out
 
@@ -663,6 +686,7 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                 **kwargs,
             ) -> Tensor:
                 # Assemble full input from give input and condition
+                # input: (B, num_latent * F), condition: (B, num_observed * F)
                 full_inputs_tensor = self._assemble_full_inputs(input, condition)
 
                 # Call the original estimator's loss
@@ -691,9 +715,9 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
             # -------------------------- ODE METHODS --------------------------
 
             def ode_fn(self, input: Tensor, condition: Tensor, times: Tensor) -> Tensor:
-                # Assemble full input from give input and condition
-                full_inputs_tensor = self._assemble_full_inputs(input, condition)
-                # Call the original estimator's ode_fn
+                full_inputs_tensor = self._assemble_full_inputs(
+                    input, condition
+                )  # (B, T, F)
                 B = full_inputs_tensor.shape[0]
                 expanded_cond_mask = self._fixed_condition_mask.unsqueeze(0).expand(
                     B, -1
@@ -701,41 +725,46 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                 expanded_edge_mask = self._fixed_edge_mask.unsqueeze(0).expand(
                     B, -1, -1
                 )
-                return self._original_estimator.ode_fn(
+
+                # original_estimator.ode_fn returns (B, T, F)
+                full_outputs_ode = self._original_estimator.ode_fn(
                     full_inputs_tensor,
                     times,
                     expanded_cond_mask,
                     expanded_edge_mask,
                 )
+                # Disassemble and flatten the output
+                latent_out, _ = self._disassemble_full_outputs(
+                    full_outputs_ode
+                )  # Returns (B, num_latent*F)
+                return latent_out
 
             # -------------------------- SDE METHODS --------------------------
 
             def score(self, input: Tensor, condition: Tensor, t: Tensor) -> Tensor:
-                # ! NOTE: I manage shapes of type [A, B, T, F] here, should I move
-                # ! this in _assemble_full_inputs() ?
-                # Check input dimensionality
-                original_shape = input.shape
-                if input.dim() > 3:
-                    # Merge first two dimensions (e.g., [A, B, T, F] -> [A*B, T, F])
-                    merged_shape = (-1,) + input.shape[-2:]
-                    input_reshaped = input.reshape(merged_shape)
+                # Assemble full input from give input and condition
+                # input: (B, num_latent * F), condition: (B, num_observed * F)
+                full_inputs_tensor = self._assemble_full_inputs(input, condition)
 
-                    # ? Should I do this?
-                    # condition_reshaped = condition.reshape(merged_shape)
-                    # t_reshaped = t.reshape(
-                    #     -1, *t.shape[input.dim() - 3 + 1 :]
-                    # ) if t.dim() > 1 else t
+                # Call the original estimator's loss
+                B = full_inputs_tensor.shape[0]
+                expanded_cond_mask = self._fixed_condition_mask.unsqueeze(0).expand(
+                    B, -1
+                )
+                expanded_edge_mask = self._fixed_edge_mask.unsqueeze(0).expand(
+                    B, -1, -1
+                )
 
-                    # Call self with reshaped inputs
-                    latent_score = self(
-                        input=input_reshaped, condition=condition, time=t
-                    )
+                full_score_outputs = self._original_estimator.score(
+                    full_inputs_tensor,
+                    t,
+                    expanded_cond_mask,
+                    expanded_edge_mask,
+                )
 
-                    # Restore original batch shape
-                    out_shape = original_shape[:-2] + latent_score.shape[-2:]
-                    latent_score = latent_score.reshape(out_shape)
-                else:
-                    latent_score = self(input=input, condition=condition, time=t)
+                # Take B, T, F and return (B, num_latent*F) and (B, num_observed*F)
+                latent_score, _ = self._disassemble_full_outputs(full_score_outputs)
+                # Returns (B, num_latent * F)
                 return latent_score
 
             def mean_t_fn(self, times: Tensor) -> Tensor:
@@ -745,64 +774,82 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                 return self._original_estimator.std_fn(times)
 
             def drift_fn(self, input: Tensor, times: Tensor) -> Tensor:
-                # ? Should manage shapes here too?
+                # input will be (B, num_latent * F)
+                # We need to pass (B, num_latent, F) to original_estimator
+                # input_unflattened = input.reshape(
+                #   input.shape[0], self._num_latent, self._original_F
+                # )
+
+                # _original_estimator.drift_fn returns (B, T, F) for full_inputs
+                # full_outputs_drift = self._original_estimator.drift_fn(
+                #   input_unflattened, times
+                # )
+
+                # Disassemble (latent, observed) and flatten latent
+                # latent_drift, _ = self._disassemble_full_outputs(full_outputs_drift)
+
                 return self._original_estimator.drift_fn(input, times)
 
             def diffusion_fn(self, input: Tensor, times: Tensor) -> Tensor:
-                # ? Should manage shapes here too?
-                return self._original_estimator.diffusion_fn(input, times)
+                # # input will be (B, num_latent * F)
+                # input_unflattened = input.reshape(
+                #   input.shape[0], self._num_latent, self._original_F
+                # )
+
+                # full_outputs_diffusion = self._original_estimator.diffusion_fn(
+                #   input_unflattened, times
+                # )
+                # latent_diffusion, _ = self._disassemble_full_outputs(
+                #   full_outputs_diffusion
+                # )
+
+                return self._original_estimator.drift_fn(input, times)
 
             # ------------------------- UTILITIES ------------------------------
 
             def _assemble_full_inputs(self, input_part, condition_part):
-                """
-                Assemble the full input tensor from input_part (latent)
-                and x_part (observed) according to fixed_cond_mask
-                passed at init time.
-
-                Args:
-                    condition_part: Tensor of shape (B, num_latent, F)
-                    x_part: Tensor of shape (B, num_observed, F)
-
-                Returns:
-                    full_inputs: Tensor of shape (B, T, F)
-                """
-
                 # Get batch shape and feature dimension
                 B = input_part.shape[0]
-                num_latent = input_part.shape[1]
-                num_observed = condition_part.shape[1]
-                F = input_part.shape[2]
-                T = num_latent + num_observed
-
-                # Prepare output tensor
-                full_inputs = torch.zeros(
-                    B, T, F, dtype=input_part.dtype, device=input_part.device
+                input_part_unflattened = input_part.reshape(
+                    B, self._num_latent, self._original_F
                 )
-                # Place input_part and condition_part in the correct positions
-                full_inputs[:, self._latent_idx, :] = input_part
-                full_inputs[:, self._observed_idx, :] = condition_part
+                condition_part_unflattened = condition_part.reshape(
+                    -1, self._num_observed, self._original_F
+                ).expand(B, self._num_observed, self._original_F)
+
+                full_inputs = torch.zeros(
+                    B,
+                    self._original_T,
+                    self._original_F,
+                    dtype=input_part.dtype,
+                    device=input_part.device,
+                )
+                # Place unflattened parts into the correct positions
+                full_inputs[:, self._latent_idx, :] = input_part_unflattened
+                full_inputs[:, self._observed_idx, :] = condition_part_unflattened
 
                 return full_inputs
 
-            def _disassemble_full_outputs(self, full_inputs):
-                """
-                Split the full input tensor into input_part (latent)
-                and condition_part (observed) according to fixed_cond_mask
-                passed at init time.
+            def _disassemble_full_outputs(self, full_outputs):
+                latent_part_unflattened = full_outputs[
+                    :, self._latent_idx, :
+                ]  # (B, num_latent, F)
+                observed_part_unflattened = full_outputs[
+                    :, self._observed_idx, :
+                ]  # (B, num_observed, F)
 
-                Args:
-                    full_inputs: Tensor of shape (B, T, F)
+                latent_part = latent_part_unflattened.reshape(
+                    latent_part_unflattened.shape[0],
+                    -1,
+                    self._num_latent * self._original_F,
+                )  # (B, ..., num_latent * F)
+                observed_part = observed_part_unflattened.reshape(
+                    observed_part_unflattened.shape[0],
+                    -1,
+                    self._num_observed * self._original_F,
+                )  # (B, ..., num_observed * F)
 
-                Returns:
-                    input_part: Tensor of shape (B, num_latent, F)
-                    condition_part: Tensor of shape (B, num_observed, F)
-                """
-
-                input_part = full_inputs[:, self._latent_idx, :]
-                condition_part = full_inputs[:, self._observed_idx, :]
-
-                return input_part, condition_part
+                return latent_part, observed_part
 
         return UnmaskedWrapper(
             self, condition_mask_for_posterior, edge_mask_for_posterior
