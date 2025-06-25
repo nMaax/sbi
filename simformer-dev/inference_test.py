@@ -1,13 +1,13 @@
 # %%
 import torch
 
-from sbi.inference import Simformer  # type: ignore
+from sbi.inference import Simformer
 from sbi.utils import BoxUniform
 
 _ = torch.manual_seed(0)
 
 NUM_SIM_NODES = 4
-NUM_NODE_FEATURES = 2
+NUM_NODE_FEATURES = 1
 NUM_OBS_NODES = 2
 NUM_LAT_NODES = NUM_SIM_NODES - NUM_OBS_NODES
 
