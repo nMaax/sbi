@@ -1,7 +1,7 @@
 # %%
 import torch
 
-from sbi.inference import Simformer
+from sbi.inference import Simformer  # type: ignore
 from sbi.utils import BoxUniform
 
 _ = torch.manual_seed(0)
@@ -11,17 +11,13 @@ NUM_NODE_FEATURES = 1
 NUM_OBS_NODES = 2
 NUM_LAT_NODES = NUM_SIM_NODES - NUM_OBS_NODES
 
+
 def simformer_simulator(num_simulations):
-    theta1 = torch.randn(num_simulations, NUM_NODE_FEATURES)
-    theta2 = torch.randn(num_simulations, NUM_NODE_FEATURES)
-    #theta1 = torch.randn(num_simulations, NUM_NODE_FEATURES) * 3.0
-    #theta2 = torch.randn(num_simulations, NUM_NODE_FEATURES) * 1.5 + 2.0
-    x1 = theta1 + torch.randn(num_simulations, NUM_NODE_FEATURES) * 0.2
-    x2 = theta2 + torch.randn(num_simulations, NUM_NODE_FEATURES) * 0.2
-    # x1 = 2 * torch.sin(theta1) + torch.randn(num_simulations, NUM_NODE_FEATURES) * 0.5
-    # x2 = 0.1 * theta1**2 + 0.3 * theta2 + 0.5 * torch.abs(x1) * torch.randn(
-    #     num_simulations, NUM_NODE_FEATURES
-    # )
+    theta1 = torch.randn(num_simulations, NUM_NODE_FEATURES) * 3.0 + 8
+    theta2 = torch.randn(num_simulations, NUM_NODE_FEATURES) * 1.5 + 6.0
+
+    x1 = theta1 + torch.randn(num_simulations, NUM_NODE_FEATURES)
+    x2 = theta2 + torch.randn(num_simulations, NUM_NODE_FEATURES)
 
     inputs_tensor = torch.stack([theta1, theta2, x1, x2], dim=1)
 
@@ -47,8 +43,8 @@ def simformer_simulator(num_simulations):
 
 # The actual diffusion will use an implicit Gaussian.
 # This prior is used for bounding box checks if samples go out of reasonable range
-prior_low = -50 * torch.ones(NUM_LAT_NODES * NUM_NODE_FEATURES)
-prior_high = 50 * torch.ones(NUM_LAT_NODES * NUM_NODE_FEATURES)
+prior_low = -10 * torch.ones(NUM_LAT_NODES * NUM_NODE_FEATURES)
+prior_high = 10 * torch.ones(NUM_LAT_NODES * NUM_NODE_FEATURES)
 prior = BoxUniform(low=prior_low, high=prior_high, device="gpu")
 
 # %%
@@ -60,11 +56,11 @@ inference: Simformer = Simformer(
     device="gpu",
 )
 
+print(inference)
+
 # %%
-num_simulations = 1000
-sim_inputs, sim_condition_masks, sim_edge_masks = simformer_simulator(
-    num_simulations
-)
+num_simulations = 10000
+sim_inputs, sim_condition_masks, sim_edge_masks = simformer_simulator(num_simulations)
 print("sim_inputs.shape", sim_inputs.shape)  # Expected: [2000, 2, 3]
 print("sim_conditioning_masks.shape", sim_condition_masks.shape)  # Expected: [2, 3]
 print("sim_edge_masks.shape", sim_edge_masks.shape)  # Expected: [2, 2]
@@ -100,44 +96,50 @@ condition_mask_single_sample[3] = True  # Index 3 is observed
 
 edge_mask_single_sample = torch.ones((NUM_SIM_NODES, NUM_SIM_NODES), dtype=torch.bool)
 
-# ! Take the network I have, and do the sampling from scratch
-
 posterior = inference.build_posterior(
     condition_mask=condition_mask_single_sample,
     edge_mask=edge_mask_single_sample,
 )
 
 # %%
-x_obs = torch.as_tensor([
-    [0.5,], #  0.8, 1.5, -1.8, -1.6, 0.1],
-    [-0.8,], #  1.6, 0.9, -0.3, 0.25, 0.4],
-])
-x_obs = x_obs.view(1, -1)
+x_obs = torch.as_tensor([8.7, 6.3]).view(1, -1)
 
 # %%
 
-samples = posterior.sample((1000,), x=x_obs)
-# samples = samples.reshape(-1, NUM_LAT_NODES, NUM_NODE_FEATURES)
+samples = posterior.sample((10000,), x=x_obs)
 
 print(f"{samples.shape=}")
 
 # %%
 
-# TODO: Do not work with Simformer shapes
-
 from sbi.analysis import pairplot
 
 _ = pairplot(
     samples.reshape(-1, NUM_LAT_NODES * NUM_NODE_FEATURES),
-    #limits=[[-10, 10]] * (NUM_LAT_NODES * NUM_NODE_FEATURES),
+    # limits=[[-10, 10]] * (NUM_LAT_NODES * NUM_NODE_FEATURES),
     figsize=(8, 8),
-    labels=[fr"$\theta_{{{i+1}}}$" for i in range(NUM_LAT_NODES * NUM_NODE_FEATURES)],
+    labels=[rf"$\theta_{{{i + 1}}}$" for i in range(NUM_LAT_NODES * NUM_NODE_FEATURES)],
 )
 
 # %%
-# theta_posterior = posterior.sample((10000,), x=x_obs)  # Sample from posterior.
-# x_predictive = simulator(theta_posterior)  # Simulate data from posterior.
+theta_posterior = posterior.sample((1000,), x=x_obs).cpu()
 
-# # %%
-# print("Posterior predictives: ", torch.mean(x_predictive, axis=0))
-# print("Observation: ", x_obs)
+
+# %%
+
+def simulate_from_theta(theta_samples):
+    num_samples = theta_samples.shape[0]
+    theta1 = theta_samples[:, 0].unsqueeze(1)
+    theta2 = theta_samples[:, 1].unsqueeze(1)
+    x1 = theta1 + torch.randn(num_samples, NUM_NODE_FEATURES)
+    x2 = theta2 + torch.randn(num_samples, NUM_NODE_FEATURES)
+    x_obs_sim = torch.cat([x1, x2], dim=1)
+    return x_obs_sim
+
+x_predictive = simulate_from_theta(theta_posterior)
+
+print("Posterior mean theta:", theta_posterior.mean(dim=0))
+print("Posterior predictives mean: ", torch.mean(x_predictive, axis=0))
+print("Observation: ", x_obs)
+
+# %%
