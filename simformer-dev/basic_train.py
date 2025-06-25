@@ -13,7 +13,7 @@ from sbi.neural_nets.net_builders.vector_field_nets import (  # type: ignore
 
 
 # %%
-class LinearGaussian(Dataset):
+class Simulator(Dataset):
     def __init__(self, num_features, n):
         self.num_nodes = 3
         self.num_features = num_features
@@ -55,7 +55,7 @@ lr = 1e-4
 in_features = 5
 
 # Instantiate dataset and dataloader
-train_dataset = LinearGaussian(num_features=in_features, n=n)
+train_dataset = Simulator(num_features=in_features, n=n)
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
 # Sequence dimension size
