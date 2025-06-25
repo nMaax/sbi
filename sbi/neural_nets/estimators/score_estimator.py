@@ -321,8 +321,8 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
 
             # Squeeze std_t for broadcasting
             s = std_t
-            while s.dim() > 1 and s.shape[-1] == 1:
-                s = s.squeeze(-1)  # [B, T] or [B]
+            # while s.dim() > 1 and s.shape[-1] == 1:
+            #     s = s.squeeze(-1)  # [B, T] or [B]
 
             # Compute terms for control variate
             # Only apply to unobserved (latent) nodes
