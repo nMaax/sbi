@@ -810,7 +810,7 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                 #   full_outputs_diffusion
                 # )
 
-                return self._original_estimator.drift_fn(input, times)
+                return self._original_estimator.diffusion_fn(input, times)
 
             # ------------------------- UTILITIES ------------------------------
 
