@@ -129,11 +129,6 @@ class ConditionalScoreEstimator(ConditionalVectorFieldEstimator):
         """Return the embedding network."""
         return self._embedding_net
 
-    #! Note:
-    #!  NO   --> input = ALL THE NODES, condition is a subset of them (those observed)
-    #!  YES  --> input = latent NODEs,  condition is observed;
-    #!           i.e., inputs union condition = ALL NODES,
-    #!                 but input intersect condition = void
     def forward(self, input: Tensor, condition: Tensor, time: Tensor) -> Tensor:
         r"""Forward pass of the score estimator
         network to compute the conditional score
