@@ -361,8 +361,9 @@ class ConditionalVectorFieldEstimator(ConditionalEstimator, ABC):
         )
 
     @abstractmethod
-    # ! Add time as parameter (adapt Wrapper according)
-    def forward(self, input: Tensor, condition: Tensor, **kwargs) -> Tensor:
+    def forward(
+        self, input: Tensor, condition: Tensor, time: Tensor, **kwargs
+    ) -> Tensor:
         r"""Forward pass of the score estimator.
 
         Args:
