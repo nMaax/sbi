@@ -714,91 +714,6 @@ class MaskedSimformerBlock(nn.Module):
         return x
 
 
-class MaskedDiTBlock(nn.Module):
-    def __init__(
-        self, hidden_dim, cond_dim, num_heads, mlp_ratio=2, activation=nn.GELU
-    ):
-        """Initialize dit transformer block.
-
-        args:
-            hidden_dim: dimension of hidden features
-            cond_dim: dimension of conditioning features
-            num_heads: number of attention heads
-            mlp_ratio: ratio for mlp hidden dimension
-            activation: activation function
-        """
-        super().__init__()
-
-        # adaptive layer norm for attention
-        self.ada_affine = nn.Sequential(
-            nn.Linear(cond_dim, hidden_dim),
-            nn.SiLU(),
-            nn.Linear(hidden_dim, 6 * hidden_dim),  # 3 for attn, 3 for mlp
-        )
-
-        # initialize last layer to zero
-        self.ada_affine[-1].weight.data.zero_()
-        self.ada_affine[-1].bias.data.zero_()
-
-        # attention
-        self.attn = nn.MultiheadAttention(
-            embed_dim=hidden_dim, num_heads=num_heads, batch_first=True
-        )
-
-        # mlp
-        self.mlp = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim * mlp_ratio),
-            activation(),
-            nn.Linear(hidden_dim * mlp_ratio, hidden_dim),
-        )
-
-        # layer norms
-        self.norm1 = nn.LayerNorm(hidden_dim)
-        self.norm2 = nn.LayerNorm(hidden_dim)
-
-    def forward(self, x, cond, mask):
-        ada_params = self.ada_affine(cond)
-        attn_shift, attn_scale, attn_gate, mlp_shift, mlp_scale, mlp_gate = (
-            ada_params.chunk(6, dim=-1)
-        )
-        B, T, D = x.shape
-
-        attn_scale = attn_scale.view(B, 1, D)
-        attn_shift = attn_shift.view(B, 1, D)
-        attn_gate = attn_gate.view(B, 1, D)
-        mlp_scale = mlp_scale.view(B, 1, D)
-        mlp_shift = mlp_shift.view(B, 1, D)
-        mlp_gate = mlp_gate.view(B, 1, D)
-
-        # Adaptive LayerNorm before attention
-        x_norm = self.norm1(x)
-        x_norm = x_norm * (attn_scale + 1) + attn_shift
-
-        # Prepare attention mask
-        if mask is not None and mask.dim() == 3:
-            # mask: [B, T, T] -> [B * num_heads, T, T]
-            B, T, _ = mask.shape
-            mask = (
-                mask.unsqueeze(1)
-                .expand(B, self.attn.num_heads, T, T)
-                .reshape(B * self.attn.num_heads, T, T)
-            )
-
-        # Self-attention
-        attn_out, _ = self.attn(x_norm, x_norm, x_norm, attn_mask=mask)
-        x = x + attn_gate * attn_out
-
-        # Adaptive LayerNorm before MLP
-        x_norm = self.norm2(x)
-        x_norm = x_norm * (mlp_scale + 1) + mlp_shift
-
-        # MLP
-        mlp_out = self.mlp(x_norm)
-        x = x + mlp_gate * mlp_out
-
-        return x
-
-
 class DiTBlock(nn.Module):
     """transformer block with adaptive layer norm for conditioning.
 
@@ -891,6 +806,91 @@ class DiTBlock(nn.Module):
         x_norm = x_norm * (mlp_scale + 1) + mlp_shift
 
         # mlp
+        mlp_out = self.mlp(x_norm)
+        x = x + mlp_gate * mlp_out
+
+        return x
+
+
+class MaskedDiTBlock(nn.Module):
+    def __init__(
+        self, hidden_dim, cond_dim, num_heads, mlp_ratio=2, activation=nn.GELU
+    ):
+        """Initialize dit transformer block.
+
+        args:
+            hidden_dim: dimension of hidden features
+            cond_dim: dimension of conditioning features
+            num_heads: number of attention heads
+            mlp_ratio: ratio for mlp hidden dimension
+            activation: activation function
+        """
+        super().__init__()
+
+        # adaptive layer norm for attention
+        self.ada_affine = nn.Sequential(
+            nn.Linear(cond_dim, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, 6 * hidden_dim),  # 3 for attn, 3 for mlp
+        )
+
+        # initialize last layer to zero
+        self.ada_affine[-1].weight.data.zero_()
+        self.ada_affine[-1].bias.data.zero_()
+
+        # attention
+        self.attn = nn.MultiheadAttention(
+            embed_dim=hidden_dim, num_heads=num_heads, batch_first=True
+        )
+
+        # mlp
+        self.mlp = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim * mlp_ratio),
+            activation(),
+            nn.Linear(hidden_dim * mlp_ratio, hidden_dim),
+        )
+
+        # layer norms
+        self.norm1 = nn.LayerNorm(hidden_dim)
+        self.norm2 = nn.LayerNorm(hidden_dim)
+
+    def forward(self, x, cond, mask):
+        ada_params = self.ada_affine(cond)
+        attn_shift, attn_scale, attn_gate, mlp_shift, mlp_scale, mlp_gate = (
+            ada_params.chunk(6, dim=-1)
+        )
+        B, T, D = x.shape
+
+        attn_scale = attn_scale.view(B, 1, D)
+        attn_shift = attn_shift.view(B, 1, D)
+        attn_gate = attn_gate.view(B, 1, D)
+        mlp_scale = mlp_scale.view(B, 1, D)
+        mlp_shift = mlp_shift.view(B, 1, D)
+        mlp_gate = mlp_gate.view(B, 1, D)
+
+        # Adaptive LayerNorm before attention
+        x_norm = self.norm1(x)
+        x_norm = x_norm * (attn_scale + 1) + attn_shift
+
+        # Prepare attention mask
+        if mask is not None and mask.dim() == 3:
+            # mask: [B, T, T] -> [B * num_heads, T, T]
+            B, T, _ = mask.shape
+            mask = (
+                mask.unsqueeze(1)
+                .expand(B, self.attn.num_heads, T, T)
+                .reshape(B * self.attn.num_heads, T, T)
+            )
+
+        # Self-attention
+        attn_out, _ = self.attn(x_norm, x_norm, x_norm, attn_mask=mask)
+        x = x + attn_gate * attn_out
+
+        # Adaptive LayerNorm before MLP
+        x_norm = self.norm2(x)
+        x_norm = x_norm * (mlp_scale + 1) + mlp_shift
+
+        # MLP
         mlp_out = self.mlp(x_norm)
         x = x + mlp_gate * mlp_out
 
@@ -1010,126 +1010,6 @@ class DiTBlockWithCrossAttention(nn.Module):
         x = x + mlp_gate * mlp_out
 
         return x
-
-
-class SimformerNet(MaskedVectorFieldNet):
-    def __init__(
-        self,
-        in_features: int,
-        num_nodes: int,
-        dim_val: int = 64,
-        dim_id: int = 32,
-        dim_cond: int = 16,
-        dim_t: int = 16,
-        dim_hidden: int = 128,
-        num_blocks: int = 4,
-        num_heads: int = 8,
-        mlp_ratio: int = 2,
-        ada_time: int = False,
-    ):
-        super().__init__()
-        self.in_features = in_features  # Number of features by each node (F)
-        self.num_nodes = num_nodes  # Number of nodes in the DAG (T = m + n)
-        self.dim_val = dim_val  # Dimension of the value token
-        self.dim_id = dim_id  # Dimension of the id token
-        self.dim_cond = dim_cond  # Dimension of the conditioning token
-        self.dim_t = dim_t  # Dimension of the time embedding
-        self.dim_hidden = (
-            dim_hidden  # Dimension of the latent space in the transformer blocks
-        )
-        self.num_blocks = num_blocks  # Number of transformer blocks to stack
-        self.num_heads = (
-            num_heads  # Number of attention heads per each transfrormer block
-        )
-
-        # Tokenize on val
-        # ? Should this be a repeat rather than Linear?
-        # ? Answer: No
-        self.val_linear = nn.Linear(in_features, dim_val)
-
-        # Tokenize on id
-        self.id_embedding = nn.Embedding(num_nodes, dim_id)
-
-        # Conditioning parameter
-        self.conditioning_parameter = nn.Parameter(torch.randn(1, 1, dim_cond) * 0.5)
-
-        # Time embedding
-        self.time_embedding = RandomFourierTimeEmbedding(dim_t)
-
-        # Project input tokens to hidden dim
-        self.in_proj = nn.Linear(dim_val + dim_id + dim_cond, dim_hidden)
-
-        # Transformer blocks
-        Block = MaskedDiTBlock if ada_time else MaskedSimformerBlock
-        self.blocks = nn.ModuleList([
-            Block(dim_hidden, dim_t, num_heads, mlp_ratio) for _ in range(num_blocks)
-        ])
-
-        # Output projection
-        self.out_linear = nn.Linear(dim_hidden, in_features)
-
-    def forward(self, inputs, t, condition_mask, edge_mask):
-        B, T, F = inputs.shape
-        device = inputs.device
-
-        # Tokenize on val
-        val_h = self.val_linear(inputs)  # [B, T, dim_val]
-
-        # Tokenize the nodes' id
-        ids = torch.arange(T, device=device).unsqueeze(0).expand(B, -1)  # [B, T]
-        id_h = self.id_embedding(ids)  # [B, T, dim_id]
-
-        if condition_mask.dim() == 1:
-            # Shape is [T], expand to [B, T, dim_cond]
-            condition_mask_expanded = (
-                condition_mask.unsqueeze(0).unsqueeze(-1).expand(B, T, self.dim_cond)
-            )
-        else:
-            # Shape is [B, T], expand to [B, T, dim_cond]
-            condition_mask_expanded = condition_mask.unsqueeze(-1).expand(
-                B, T, self.dim_cond
-            )
-
-        # Conditioning
-        # conditioning_parameter: [1, 1, dim_cond]
-        conditioning_h = (
-            self.conditioning_parameter.expand(B, T, self.dim_cond)
-            * condition_mask_expanded
-        )  # [B, T, dim_cond]
-
-        # Time embedding, [B,] or []
-        if t.ndim == 0:
-            t = t.expand(B)
-
-        # ? Normalize time to [0, 1] if not already done (should I do this?)
-        # ? t_norm = (t - t.min()) / (t.max() - t.min() + 1e-8)
-        # ? Answer: No
-        t_h = self.time_embedding(t)  # [B, dim_t]
-
-        # Concatenate tokens
-        tokens = torch.cat(
-            [val_h, id_h, conditioning_h], dim=-1
-        )  # [B, T, dim_val + dim_id + dim_cond]
-
-        # Initial projection
-        h = self.in_proj(tokens)  # [B, T, dim_hidden]
-
-        # Pass through transformer blocks
-        # Invert mask to follow Torch convention
-        # Edge mask convention:
-        #   E(i,j) = 1 for edge j depending on i,
-        #   0 otherwise
-        # Torch convention:
-        #   True for masked (no attention),
-        #   False for allowed (attention)
-        for block in self.blocks:
-            h = block(h, t_h, ~edge_mask.bool())
-
-        # Output projection
-        # ? Should this be flattened as [B, T*F]?
-        # ? Answer: No, as you will use your own score estimator
-        out = self.out_linear(h)  # [B, T, F]
-        return out
 
 
 class VectorFieldTransformer(VectorFieldNet):
@@ -1262,6 +1142,126 @@ class VectorFieldTransformer(VectorFieldNet):
         h = h.squeeze(-1)
 
         return h
+
+
+class SimformerNet(MaskedVectorFieldNet):
+    def __init__(
+        self,
+        in_features: int,
+        num_nodes: int,
+        dim_val: int = 64,
+        dim_id: int = 32,
+        dim_cond: int = 16,
+        dim_t: int = 16,
+        dim_hidden: int = 128,
+        num_blocks: int = 4,
+        num_heads: int = 8,
+        mlp_ratio: int = 2,
+        ada_time: int = False,
+    ):
+        super().__init__()
+        self.in_features = in_features  # Number of features by each node (F)
+        self.num_nodes = num_nodes  # Number of nodes in the DAG (T = m + n)
+        self.dim_val = dim_val  # Dimension of the value token
+        self.dim_id = dim_id  # Dimension of the id token
+        self.dim_cond = dim_cond  # Dimension of the conditioning token
+        self.dim_t = dim_t  # Dimension of the time embedding
+        self.dim_hidden = (
+            dim_hidden  # Dimension of the latent space in the transformer blocks
+        )
+        self.num_blocks = num_blocks  # Number of transformer blocks to stack
+        self.num_heads = (
+            num_heads  # Number of attention heads per each transfrormer block
+        )
+
+        # Tokenize on val
+        # ? Should this be a repeat rather than Linear?
+        # ? Answer: No
+        self.val_linear = nn.Linear(in_features, dim_val)
+
+        # Tokenize on id
+        self.id_embedding = nn.Embedding(num_nodes, dim_id)
+
+        # Conditioning parameter
+        self.conditioning_parameter = nn.Parameter(torch.randn(1, 1, dim_cond) * 0.5)
+
+        # Time embedding
+        self.time_embedding = RandomFourierTimeEmbedding(dim_t)
+
+        # Project input tokens to hidden dim
+        self.in_proj = nn.Linear(dim_val + dim_id + dim_cond, dim_hidden)
+
+        # Transformer blocks
+        Block = MaskedDiTBlock if ada_time else MaskedSimformerBlock
+        self.blocks = nn.ModuleList([
+            Block(dim_hidden, dim_t, num_heads, mlp_ratio) for _ in range(num_blocks)
+        ])
+
+        # Output projection
+        self.out_linear = nn.Linear(dim_hidden, in_features)
+
+    def forward(self, inputs, t, condition_mask, edge_mask):
+        B, T, F = inputs.shape
+        device = inputs.device
+
+        # Tokenize on val
+        val_h = self.val_linear(inputs)  # [B, T, dim_val]
+
+        # Tokenize the nodes' id
+        ids = torch.arange(T, device=device).unsqueeze(0).expand(B, -1)  # [B, T]
+        id_h = self.id_embedding(ids)  # [B, T, dim_id]
+
+        if condition_mask.dim() == 1:
+            # Shape is [T], expand to [B, T, dim_cond]
+            condition_mask_expanded = (
+                condition_mask.unsqueeze(0).unsqueeze(-1).expand(B, T, self.dim_cond)
+            )
+        else:
+            # Shape is [B, T], expand to [B, T, dim_cond]
+            condition_mask_expanded = condition_mask.unsqueeze(-1).expand(
+                B, T, self.dim_cond
+            )
+
+        # Conditioning
+        # conditioning_parameter: [1, 1, dim_cond]
+        conditioning_h = (
+            self.conditioning_parameter.expand(B, T, self.dim_cond)
+            * condition_mask_expanded
+        )  # [B, T, dim_cond]
+
+        # Time embedding, [B,] or []
+        if t.ndim == 0:
+            t = t.expand(B)
+
+        # ? Normalize time to [0, 1] if not already done (should I do this?)
+        # ? t_norm = (t - t.min()) / (t.max() - t.min() + 1e-8)
+        # ? Answer: No
+        t_h = self.time_embedding(t)  # [B, dim_t]
+
+        # Concatenate tokens
+        tokens = torch.cat(
+            [val_h, id_h, conditioning_h], dim=-1
+        )  # [B, T, dim_val + dim_id + dim_cond]
+
+        # Initial projection
+        h = self.in_proj(tokens)  # [B, T, dim_hidden]
+
+        # Pass through transformer blocks
+        # Invert mask to follow Torch convention
+        # Edge mask convention:
+        #   E(i,j) = 1 for edge j depending on i,
+        #   0 otherwise
+        # Torch convention:
+        #   True for masked (no attention),
+        #   False for allowed (attention)
+        for block in self.blocks:
+            h = block(h, t_h, ~edge_mask.bool())
+
+        # Output projection
+        # ? Should this be flattened as [B, T*F]?
+        # ? Answer: No, as you will use your own score estimator
+        out = self.out_linear(h)  # [B, T, F]
+        return out
 
 
 # ======= Factory Functions =======
