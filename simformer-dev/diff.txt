@@ -23,3 +23,8 @@ sbi/neural_nets/net_builders/vector_field_nets.py # build_vector_field_estimator
 
 sbi/utils/torchutils.py # ensure_latent_batch
 sbi/utils/vector_field_utils.py # MaskedVectorFieldNet
+
+** ORIGINAL CODEBASE MODIFICATIONS ***
+
+1. added .cpu() before .numpy() in plots.py
+2. ConditionalVectorFieldEstimator now takes time as keyed parameter in (abstract) forward pass

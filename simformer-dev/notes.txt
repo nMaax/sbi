@@ -7,15 +7,16 @@ From merge_flow_builders_to_current_main:
 ## TODO
 
 - Clean the codebase
-    - Solve comments around codebase (# ? and # !)
-    - Corrections by Manuel: Simformer in NeuralNets renamed in SimformerNet, etc. (search # ? and # !)
+    X Solve comments around codebase (# ? and # !)
+    X Corrections by Manuel: Simformer in NeuralNets renamed in SimformerNet, etc. (search # ? and # !)
     - Adjust docstring copy/pasted
     - Optimize code
     - Remove stupid comments
     - Renaming conditioning_mask in conditioning_mask
     - Check that convention (1 =, 0=) for condition mask and (1=, 0=) for edge mask is respected
-    - Move all Masked* versions of classes below their reference
+    X Move all Masked* versions of classes below their reference
     - standard_simformer or simformer? How to require ada?
+- Generalize wrapper (not just score) and move to another file
 - Condition and Edge mask multiple if handling in VE/ScoreEstimator loss
 - Decide where you want to generate the automatic edge and condition masks
 - Decide at what level you want to see masks to appear among parameters of methods, and where not, also decide accordingly the implementation of the Wrapper as it must be a *callable* by itself
@@ -23,6 +24,7 @@ From merge_flow_builders_to_current_main:
 - Fix score, forward, loss, ode_fn not receiving condition and edge mask in Wrapper withing MaskedConditionalVectorFieldEstimator.unmask() method
 - Test extensively with complex shapes, re-check every change you make
 - Finish up the joint classes if you have time
+- Should simformer work in multi-round?
 
 ## Questions
 
