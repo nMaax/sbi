@@ -139,7 +139,7 @@ def simulate_from_theta(theta_samples):
 x_predictive = simulate_from_theta(theta_posterior)
 
 print("Posterior mean theta:", theta_posterior.mean(dim=0))
-print("Posterior predictives mean: ", torch.mean(x_predictive, axis=0))
+print("Posterior predictives mean: ", torch.mean(x_predictive, axis=0)) # type: ignore
 print("Observation: ", x_obs)
 
 # %%

@@ -1,7 +1,7 @@
 import torch
 
-from sbi.neural_nets.estimators.score_estimator import (
-    MaskedVEScoreEstimator,  # type: ignore
+from sbi.neural_nets.estimators.score_estimator import ( # type: ignore
+    MaskedVEScoreEstimator,
 )
 from sbi.neural_nets.net_builders.vector_field_nets import (  # type: ignore
     MaskedDiTBlock,
