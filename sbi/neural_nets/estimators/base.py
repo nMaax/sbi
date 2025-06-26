@@ -686,38 +686,13 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                 condition: Tensor,
                 **kwargs,
             ) -> Tensor:
-                # # Assemble full input from give input and condition
-                # # input: (B, num_latent * F), condition: (B, num_observed * F)
-                # full_inputs_tensor = self._assemble_full_inputs(input, condition)
-
-                # # Call the original estimator's loss
-                # B = full_inputs_tensor.shape[0]
-                # expanded_cond_mask = self._fixed_condition_mask.unsqueeze(0).expand(
-                #     B, -1
-                # )
-                # expanded_edge_mask = self._fixed_edge_mask.unsqueeze(0).expand(
-                #     B, -1, -1
-                # )
-
-                # # Score Estimator specific kwargs
-                # if 'times' in kwargs:
-                #     times = kwargs.pop('times')
-                # control_variate = kwargs.pop('control_variate', True)
-                # control_variate_threshold = kwargs.pop(
-                #     'control_variate_threshold', 0.3
-                # )
-
-                # return self._original_estimator.loss(
-                #     full_inputs_tensor,
-                #     expanded_cond_mask,
-                #     expanded_edge_mask,
-                #     times,
-                #     control_variate,
-                #     control_variate_threshold,
-                # )
-                # ! Pass msg for user not to use this method
-                # ! If you wanted to pass this to a different inference method ...
-                raise NotImplementedError("")
+                raise NotImplementedError(
+                    "The loss method of the UnmaskedWrapper is not "
+                    "intended to be used directly. If you want to use "
+                    "this estimator for a different inference method, "
+                    "please use the original masked estimator "
+                    "or implement a suitable loss."
+                )
 
             # -------------------------- ODE METHODS --------------------------
 
