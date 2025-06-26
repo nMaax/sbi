@@ -854,7 +854,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         self._inputs_roundwise.append(inputs)
         self._condition_masks_roundwise.append(condition_masks)
         self._edge_masks_roundwise.append(edge_masks)
-        self._prior_masks.append(prior_masks)  # ! Makes sense only for multi-round
+        self._prior_masks.append(prior_masks)
 
         self._proposal_roundwise.append(proposal)
 
