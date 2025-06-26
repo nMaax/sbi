@@ -572,10 +572,6 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         while std.dim() < input.dim():
             std = std.unsqueeze(1)
 
-        # ? Skipped, as Simformer expects time as it is, not as a level of std
-        # ? Answer: Ok
-        # time_enc = self.std_fn(time)
-
         # Z-score the input
         input_enc = (input - mean) / std
 

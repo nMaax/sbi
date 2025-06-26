@@ -1175,8 +1175,6 @@ class SimformerNet(MaskedVectorFieldNet):
         )
 
         # Tokenize on val
-        # ? Should this be a repeat rather than Linear?
-        # ? Answer: No
         self.val_linear = nn.Linear(in_features, dim_val)
 
         # Tokenize on id
@@ -1232,10 +1230,6 @@ class SimformerNet(MaskedVectorFieldNet):
         # Time embedding, [B,] or []
         if t.ndim == 0:
             t = t.expand(B)
-
-        # ? Normalize time to [0, 1] if not already done (should I do this?)
-        # ? t_norm = (t - t.min()) / (t.max() - t.min() + 1e-8)
-        # ? Answer: No
         t_h = self.time_embedding(t)  # [B, dim_t]
 
         # Concatenate tokens
@@ -1258,8 +1252,6 @@ class SimformerNet(MaskedVectorFieldNet):
             h = block(h, t_h, ~edge_mask.bool())
 
         # Output projection
-        # ? Should this be flattened as [B, T*F]?
-        # ? Answer: No, as you will use your own score estimator
         out = self.out_linear(h)  # [B, T, F]
         return out
 

@@ -756,35 +756,9 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                 return self._original_estimator.std_fn(times)
 
             def drift_fn(self, input: Tensor, times: Tensor) -> Tensor:
-                # input will be (B, num_latent * F)
-                # We need to pass (B, num_latent, F) to original_estimator
-                # input_unflattened = input.reshape(
-                #   input.shape[0], self._num_latent, self._original_F
-                # )
-
-                # _original_estimator.drift_fn returns (B, T, F) for full_inputs
-                # full_outputs_drift = self._original_estimator.drift_fn(
-                #   input_unflattened, times
-                # )
-
-                # Disassemble (latent, observed) and flatten latent
-                # latent_drift, _ = self._disassemble_full_outputs(full_outputs_drift)
-
                 return self._original_estimator.drift_fn(input, times)
 
             def diffusion_fn(self, input: Tensor, times: Tensor) -> Tensor:
-                # # input will be (B, num_latent * F)
-                # input_unflattened = input.reshape(
-                #   input.shape[0], self._num_latent, self._original_F
-                # )
-
-                # full_outputs_diffusion = self._original_estimator.diffusion_fn(
-                #   input_unflattened, times
-                # )
-                # latent_diffusion, _ = self._disassemble_full_outputs(
-                #   full_outputs_diffusion
-                # )
-
                 return self._original_estimator.diffusion_fn(input, times)
 
             # ------------------------- UTILITIES ------------------------------
