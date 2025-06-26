@@ -579,7 +579,6 @@ def check_if_proposal_has_default_x(proposal: Any):
         )
 
 
-# ! Sub-class of NeuralInference
 class MaskedNeuralInference(ABC):
     """Abstract base class for masked neural inference methods."""
 
