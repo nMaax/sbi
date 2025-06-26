@@ -395,6 +395,7 @@ class BoxUniform(Independent):
         )
 
 
+# ! Only used in joint, can remove later
 def ensure_latent_batched(latent: Tensor) -> Tensor:
     r"""
     Return variable set latent that has a batch dimension, i.e. has shape
