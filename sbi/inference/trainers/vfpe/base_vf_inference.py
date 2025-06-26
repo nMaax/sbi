@@ -58,9 +58,7 @@ class VectorFieldEstimatorBuilder(Protocol):
 class MaskedVectorFieldEstimatorBuilder(Protocol):
     """Protocol for building a masked vector field estimator from data."""
 
-    def __call__(
-        self, inputs: Tensor, condition_mask: Tensor, edge_mask: Tensor
-    ) -> MaskedConditionalVectorFieldEstimator:
+    def __call__(self, inputs: Tensor) -> MaskedConditionalVectorFieldEstimator:
         """Build a vector field estimator from inputs, condition_mask, edge_mask,
         which mainly inform the shape of the input and the condition to
         the neural network.
@@ -986,8 +984,6 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
 
             self._neural_net = self._build_neural_net(
                 inputs[self.train_indices].to("cpu"),
-                condition_masks[self.train_indices].to("cpu"),
-                edge_masks[self.train_indices].to("cpu"),
             )
 
             del inputs, condition_masks, edge_masks

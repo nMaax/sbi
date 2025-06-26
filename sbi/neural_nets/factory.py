@@ -125,8 +125,6 @@ def simformer_nn(
 
     def build_fn(
         batch_inputs,
-        conditioning_masks,  # ? Ignored, should keep?
-        edge_masks,  # ? Ignored, should keep?
     ):
         # Build the score matching estimator
         return build_masked_score_matching_estimator(
