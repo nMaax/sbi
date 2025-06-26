@@ -1,0 +1,25 @@
+** REMOVABLE, do it later after branching out them **
+
+sbi/inference/joints/* # New files
+sbi/inference/potentials/base_potential.py # Defined MaskedBasePotential, CustomMaskedPotential(Protocol), CustomMaskedPotentialWrapper(MaskedBasePotential)
+sbi/inference/potentials/joint_based_potential.py # Same as joint distribution above
+sbi/inference/potentials/vector_field_potential.py # Defined masked_vector_field_estimator_based_potential and MaskedVectorFieldBasedPotential
+
+sbi/samplers/ode_solvers/base.py # MaskedNeuralODEFunc(Protocol), MaskedNeuralODE(LazyDistribution), MaskedZukoNeuralODE(MaskedNeuralODE), comment in Diffuser
+
+**sbi/analysis**
+sbi/analysis/plots.py # Added .cpu()
+
+**sbi/inference**
+sbi/inference/trainers/base.py # MaskedNeuralInference(ABC)
+sbi/inference/trainers/vfpe/base_vf_inference.py # MaskedVectorFiedlEstimatorBuilder(Protocol), MaskedVectorFieldInference(MaskedNeuralInference)
+sbi/inference/trainers/vfpe/simformer.py # New file, Simformer(MaskedVectorFieldInference)
+
+**sbi/neural_nets**
+sbi/neural_nets/estimators/base.py # MaskedConditionalEstimator, MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator)
+sbi/neural_nets/estimators/score_estimator.py # MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator), comments just above ConditionalScoreEstimator, MaskedVEScoreEstimator(MaskedConditionalScoreEstimator)
+sbi/neural_nets/factory.py # simformer_nn
+sbi/neural_nets/net_builders/vector_field_nets.py # build_vector_field_estimator accepts simformer and masked-score, MaskedSimformerBlock (rename! in MaskedTimeAdditiveBlock), MaskedDiTBlock, SimformerNet(MaskedVectorFieldNet), build_simformer_network(choose default parameters here)
+
+sbi/utils/torchutils.py # ensure_latent_batch
+sbi/utils/vector_field_utils.py # MaskedVectorFieldNet
