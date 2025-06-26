@@ -579,20 +579,14 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
             def __init__(
                 self, original_estimator, fixed_condition_mask, fixed_edge_mask
             ):
-                T, F = original_estimator.input_shape  # (e.g., 4, 7)
+                T, F = original_estimator.input_shape
 
-                num_latent = int(torch.sum(fixed_condition_mask == 0).item())  # e.g., 2
-                num_observed = int(
-                    torch.sum(fixed_condition_mask == 1).item()
-                )  # e.g., 2
+                num_latent = int(torch.sum(fixed_condition_mask == 0).item())
+                num_observed = int(torch.sum(fixed_condition_mask == 1).item())
 
                 # Count number of latent and observed nodes
-                self._new_input_shape = torch.Size((
-                    num_latent * F,
-                ))  # e.g., (2 * 7,) = (14,)
-                self._new_condition_shape = torch.Size((
-                    num_observed * F,
-                ))  # e.g., (2 * 7,) = (14,)
+                self._new_input_shape = torch.Size((num_latent * F,))
+                self._new_condition_shape = torch.Size((num_observed * F,))
 
                 super().__init__(
                     net=original_estimator.net,
@@ -600,27 +594,28 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                     condition_shape=self._new_condition_shape,
                     t_min=original_estimator.t_min,
                     t_max=original_estimator.t_max,
-                    mean_base=0.0,  # Bypassing constraints, will override later
-                    std_base=1.0,  # Bypassing constraints, will override later
                 )
+
+                self.SCORE_DEFINED = original_estimator.SCORE_DEFINED
+                self.SDE_DEFINED = original_estimator.SDE_DEFINED
+                self.MARGINALS_DEFINED = original_estimator.MARGINALS_DEFINED
 
                 self._original_T = T
                 self._original_F = F
                 self._num_latent = num_latent
                 self._num_observed = num_observed
 
-                # Ensure input_part and condition_part are on the same device
-                device = next(original_estimator.net.parameters()).device
-
-                self.SCORE_DEFINED = original_estimator.SCORE_DEFINED
-                self.SDE_DEFINED = original_estimator.SDE_DEFINED
-                self.MARGINALS_DEFINED = original_estimator.MARGINALS_DEFINED
-
                 self._original_estimator = original_estimator
 
-                # ? Maybe there is a better method to handle device here?
-                self._fixed_condition_mask = fixed_condition_mask.to(device)
-                self._fixed_edge_mask = fixed_edge_mask.to(device)
+                # Ensure input_part and condition_part are on the same device
+                device = next(original_estimator.net.parameters()).device
+                self.register_buffer(
+                    "_fixed_condition_mask",
+                    fixed_condition_mask.to(device).clone().detach(),
+                )
+                self.register_buffer(
+                    "_fixed_edge_mask", fixed_edge_mask.to(device).clone().detach()
+                )
 
                 # Extract indices for latent (0) and observed (1) nodes
                 # from the fixed_condition_mask
@@ -630,7 +625,6 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                 ]
 
                 # Get the mean/std for the latent nodes from the original estimator
-                # This gives shape [1, num_latent, F] (e.g., [1, 2, 7])
                 latent_mean_base_unflattened = original_estimator.mean_base[
                     :, self._latent_idx, :
                 ]
@@ -638,7 +632,6 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                     :, self._latent_idx, :
                 ]
 
-                # They should be [1, num_latent * F] (e.g., [1, 14])
                 latent_mean_base_flattened = latent_mean_base_unflattened.flatten(
                     start_dim=1
                 )
