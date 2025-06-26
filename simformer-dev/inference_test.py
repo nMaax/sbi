@@ -3,6 +3,7 @@ import torch
 
 from sbi.inference import Simformer  # type: ignore
 from sbi.utils import BoxUniform
+from torch import nn
 
 _ = torch.manual_seed(0)
 
@@ -54,6 +55,15 @@ inference: Simformer = Simformer(
     vf_estimator="simformer",
     sde_type="ve",
     device="gpu",
+    hidden_features=100,
+    num_layers=5,
+    num_heads=4,
+    mlp_ratio=2,
+    time_embedding_dim=32,
+    embedding_net=nn.Identity(),
+    dim_val=64,
+    dim_id=32,
+    dim_cond=16,
     ada_time=False, # TODO: fix
 )
 
@@ -117,7 +127,7 @@ from sbi.analysis import pairplot
 
 _ = pairplot(
     samples.reshape(-1, NUM_LAT_NODES * NUM_NODE_FEATURES),
-    # limits=[[-10, 10]] * (NUM_LAT_NODES * NUM_NODE_FEATURES),
+    limits=[[0, 20]] * (NUM_LAT_NODES * NUM_NODE_FEATURES),
     figsize=(8, 8),
     labels=[rf"$\theta_{{{i + 1}}}$" for i in range(NUM_LAT_NODES * NUM_NODE_FEATURES)],
 )
