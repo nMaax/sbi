@@ -705,7 +705,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         prior: Optional[Distribution] = None,
         vector_field_estimator_builder: Union[
             str, MaskedVectorFieldEstimatorBuilder
-        ] = "simformer_standard",
+        ] = "simformer",
         device: str = "cpu",
         logging_level: Union[int, str] = "WARNING",
         summary_writer: Optional[SummaryWriter] = None,

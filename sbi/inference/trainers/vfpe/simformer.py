@@ -41,7 +41,7 @@ class Simformer(MaskedVectorFieldInference):
         vf_estimator: Union[
             str,
             MaskedVectorFieldEstimatorBuilder,
-        ] = "simformer_standard",
+        ] = "simformer",
         sde_type: Literal["vp", "ve", "subvp"] = "ve",
         device: str = "cpu",
         logging_level: Union[int, str] = "WARNING",

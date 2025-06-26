@@ -54,6 +54,7 @@ inference: Simformer = Simformer(
     vf_estimator="simformer",
     sde_type="ve",
     device="gpu",
+    ada_time=False, # TODO: fix
 )
 
 print(inference)
