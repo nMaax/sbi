@@ -76,6 +76,7 @@ embedding_net_warn_msg = """The passed embedding net will be moved to cpu for
 
 def simformer_nn(
     model: str = "simformer",
+    # ? Is it necessary? Also in posterior_score_nn this is skipped
     sde_type: str = "ve",
     hidden_features: int = 100,
     num_heads: int = 4,
