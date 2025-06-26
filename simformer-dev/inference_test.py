@@ -43,8 +43,8 @@ def simformer_simulator(num_simulations):
 
 # The actual diffusion will use an implicit Gaussian.
 # This prior is used for bounding box checks if samples go out of reasonable range
-prior_low = -10 * torch.ones(NUM_LAT_NODES * NUM_NODE_FEATURES)
-prior_high = 10 * torch.ones(NUM_LAT_NODES * NUM_NODE_FEATURES)
+prior_low = -25 * torch.ones(NUM_LAT_NODES * NUM_NODE_FEATURES)
+prior_high = 25 * torch.ones(NUM_LAT_NODES * NUM_NODE_FEATURES)
 prior = BoxUniform(low=prior_low, high=prior_high, device="gpu")
 
 # %%
@@ -59,7 +59,7 @@ inference: Simformer = Simformer(
 print(inference)
 
 # %%
-num_simulations = 10000
+num_simulations = 1000
 sim_inputs, sim_condition_masks, sim_edge_masks = simformer_simulator(num_simulations)
 print("sim_inputs.shape", sim_inputs.shape)  # Expected: [2000, 2, 3]
 print("sim_conditioning_masks.shape", sim_condition_masks.shape)  # Expected: [2, 3]
