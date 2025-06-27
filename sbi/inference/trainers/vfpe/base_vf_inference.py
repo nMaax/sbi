@@ -1316,14 +1316,37 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         sample_with: str = "sde",
         **kwargs,
     ) -> VectorFieldPosterior:
-        r"""Build an arbitrary posterior from condition mask,
-        edge mask, and the vector field estimator.
+        r"""Build posterior for a given conditioning context.
+
+        This method constructs a `VectorFieldPosterior` object for a specific
+        inference problem defined by the `condition_mask` and `edge_mask`.
 
         Args:
-            ...
+            condition_masks: A boolean mask indicating the role of each node.
+                Expected shape: `(batch_size, num_nodes)`.
+                - `True` (or `1`): The node at this position is observed and its
+                    features will be used for conditioning.
+                - `False` (or `0`): The node at this position is latent and its
+                    parameters are subject to inference.
+            edge_masks: A boolean mask defining the adjacency matrix of the directed
+                acyclic graph (DAG) representing dependencies among nodes.
+                Expected shape: `(batch_size, num_nodes, num_nodes)`.
+                - `True` (or `1`): An edge exists from the row node to the column node.
+                - `False` (or `0`): No edge exists between these nodes.
+            masked_vector_field_estimator: The masked vector field estimator that the
+                posterior is based on. If `None`, use the latest vector field estimator
+                that was trained.
+            prior: The prior distribution.
+            sample_with: Method to use for sampling from the posterior. Can be one of
+                'sde' (default) or 'ode'. The 'sde' method uses the vector field to
+                do a Langevin diffusion step, while the 'ode' solves a probabilistic ODE
+                with a numerical ODE solver.
+            **kwargs: Additional keyword arguments passed to the
+                `VectorFieldPosterior`.
 
         Returns:
-            Posterior $p(\theta|x)$  with `.sample()` and `.log_prob()` methods.
+            A `VectorFieldPosterior` object representing $p(theta|x)$ with
+            `.sample()` and `.log_prob()` methods.
         """
 
         if prior is None:
@@ -1373,17 +1396,25 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         times: Optional[Tensor] = None,
         force_first_round_loss: bool = False,
     ) -> Tensor:
-        r"""Return loss from vector field estimator. Currently only single-round
+        r"""Return loss from masked vector field estimator. Currently only single-round
         training is implemented, i.e., no proposal correction is applied for later
         rounds.
 
         The loss can be weighted with a calibration kernel.
 
         Args:
-            inputs: Simulation outputs :math:`x`.
-            condition_masks: Mask definining which nodes in `inputs` are
-                latent or observed.
-            edge_masks: Mask definining dependencies between nodes in `inputs`.
+            inputs: Simulation outputs.
+            condition_masks: A boolean mask indicating the role of each node.
+                Expected shape: `(batch_size, num_nodes)`.
+                - `True` (or `1`): The node at this position is observed and its
+                    features will be used for conditioning.
+                - `False` (or `0`): The node at this position is latent and its
+                    parameters are subject to inference.
+            edge_masks: A boolean mask defining the adjacency matrix of the directed
+                acyclic graph (DAG) representing dependencies among nodes.
+                Expected shape: `(batch_size, num_nodes, num_nodes)`.
+                - `True` (or `1`): An edge exists from the row node to the column node.
+                - `False` (or `0`): No edge exists between these nodes.
             masks: Prior masks. Ignored for now.
             proposal: Proposal distribution. Ignored for now.
             calibration_kernel: Calibration kernel.
