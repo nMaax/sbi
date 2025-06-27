@@ -32,8 +32,13 @@ from sbi.utils import (
     validate_theta_and_x,
     warn_if_zscoring_changes_data,
 )
-from sbi.utils.sbiutils import ImproperEmpirical, mask_sims_from_prior
+from sbi.utils.sbiutils import (
+    ImproperEmpirical,
+    mask_sims_from_prior,
+    simformer_msg_on_invalid_inputs,
+)
 from sbi.utils.torchutils import assert_all_finite
+from sbi.utils.user_input_checks import validate_inputs_and_masks
 
 
 class VectorFieldEstimatorBuilder(Protocol):
@@ -59,19 +64,26 @@ class MaskedVectorFieldEstimatorBuilder(Protocol):
     """Protocol for building a masked vector field estimator from data."""
 
     def __call__(self, inputs: Tensor) -> MaskedConditionalVectorFieldEstimator:
-        """Build a vector field estimator from inputs, condition_mask, edge_mask,
+        """Build a masked vector field estimator from inputs, condition_mask, edge_mask,
         which mainly inform the shape of the input and the condition to
         the neural network.
 
         Generally, it can also be used to z-score the data, but not in the case
-        of vector field estimators.
+        of masked vector field estimators.
 
         Args:
             inputs: Simulation outputs.
-            condition_mask: Mask defining which nodes in `inputs` are
-                latent or observed
-            edge_mask: Mask defining dependencies among nodes in `inputs`,
-                it is the equivalent of the adjacency mask in a DAG.
+            condition_masks: A boolean mask indicating the role of each node.
+                Expected shape: `(batch_size, num_nodes)`.
+                - `True` (or `1`): The node at this position is observed and its
+                  features will be used for conditioning.
+                - `False` (or `0`): The node at this position is latent and its
+                  parameters are subject to inference.
+            edge_masks: A boolean mask defining the adjacency matrix of the directed
+                acyclic graph (DAG) representing dependencies among nodes.
+                Expected shape: `(batch_size, num_nodes, num_nodes)`.
+                - `True` (or `1`): An edge exists from the row node to the column node.
+                - `False` (or `0`): No edge exists between these nodes.
 
         Returns:
             Masked vector field estimator.
@@ -703,7 +715,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
     def __init__(
         self,
         prior: Optional[Distribution] = None,
-        vector_field_estimator_builder: Union[
+        masked_vector_field_estimator_builder: Union[
             str, MaskedVectorFieldEstimatorBuilder
         ] = "simformer",
         device: str = "cpu",
@@ -715,16 +727,20 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         """Base class for masked vector field inference methods. It is
         used for Simformer.
 
-        NOTE: Vector field inference does not support multi-round inference
-        with flexible proposals yet. You can try to run multi-round with
-        truncated proposals, but note that this is not tested yet.
+        # ? Correct?
+        NOTE: Masked Vector field inference does not support multi-round inference
+        with flexible proposals yet.
 
         Args:
-            prior: Prior distribution.
-            vector_field_estimator_builder: Neural network architecture for the
-                vector field estimator. Can be a string (e.g. 'simformer' or 'ada_mlp')
-                or a callable that implements the `VectorFieldEstimatorBuilder` protocol
-                with `__call__` that receives `inputs`, `condition_mask`,
+            # ? Correct
+            prior: Prior distribution. Its primary use is for rejecting samples that
+                fall outside its defined support. For the core inference process,
+                this prior is ignored, as the actual "prior" over which the diffusion
+                model operates is standard Gaussian noise.
+            masked_vector_field_estimator_builder: Neural network architecture for the
+                masked vector field estimator. Can be a string (e.g. 'simformer')
+                or a callable that implements the `MaskedVectorFieldEstimatorBuilder`
+                protocol with `__call__` that receives `inputs`, `condition_mask`,
                 and `edge_mask` and returns a `MaskedConditionalVectorFieldEstimator`.
             device: Device to run the training on.
             logging_level: Logging level for the training. Can be an integer or a
@@ -748,13 +764,14 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         # `_build_neural_net`. It will be called in the first round and receive
         # thetas and xs as inputs, so that they can be used for shape inference and
         # potentially for z-scoring.
-        check_estimator_arg(vector_field_estimator_builder)
-        if isinstance(vector_field_estimator_builder, str):
+        check_estimator_arg(masked_vector_field_estimator_builder)
+        if isinstance(masked_vector_field_estimator_builder, str):
             self._build_neural_net = self._build_default_nn_fn(
-                vector_field_estimator_builder=vector_field_estimator_builder, **kwargs
+                vector_field_estimator_builder=masked_vector_field_estimator_builder,
+                **kwargs,
             )
         else:
-            self._build_neural_net = vector_field_estimator_builder
+            self._build_neural_net = masked_vector_field_estimator_builder
 
         self._proposal_roundwise = []
 
@@ -778,19 +795,26 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
     ) -> "MaskedVectorFieldInference":
         r"""Store parameters and simulation outputs to use them for later training.
 
-        Data are stored as entries in lists for each type of variable (parameter/data).
+        Data are stored as entries in lists for each type of variable (inputs/masks).
 
-        Stores inputs and prior_masks (indicating if simulations are coming from the
-        prior or not) and an index indicating which round the batch of simulations came
-        from.
+        Stores inputs, condition_masks, edge_masks and prior_masks (indicating if
+        simulations are coming from the prior or not) and an index indicating which
+        round the batch of simulations came from.
 
         Args:
             inputs: Simulation outputs.
-            condition_masks: Mask defining which nodes in `inputs` are latent
-                or observed.
-            edge_masks: Mask defining dependencies among nodes in `inputs`,
-                equivalent to the adjacency mask in the DAG,
-            proposal: The distribution that the parameters $\theta$ were sampled from.
+            condition_masks: A boolean mask indicating the role of each node.
+                Expected shape: `(batch_size, num_nodes)`.
+                - `True` (or `1`): The node at this position is observed and its
+                    features will be used for conditioning.
+                - `False` (or `0`): The node at this position is latent and its
+                    parameters are subject to inference.
+            edge_masks: A boolean mask defining the adjacency matrix of the directed
+                acyclic graph (DAG) representing dependencies among nodes.
+                Expected shape: `(batch_size, num_nodes, num_nodes)`.
+                - `True` (or `1`): An edge exists from the row node to the column node.
+                - `False` (or `0`): No edge exists between these nodes.
+            proposal: The distribution that the inputs were sampled from.
                 Pass `None` if the parameters were sampled from the prior. Multi-round
                 training is not yet implemented, so anything other than `None` will
                 raise an error.
@@ -822,10 +846,13 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         if data_device is None:
             data_device = self._device
 
-        # ? Skip, as we only have inputs (could be done an equivalent later)
-        # theta, x = validate_theta_and_x(
-        #     theta, x, data_device=data_device, training_device=self._device
-        # )
+        inputs, condition_masks, edge_masks = validate_inputs_and_masks(
+            inputs,
+            condition_masks,
+            edge_masks,
+            data_device=data_device,
+            training_device=self._device,
+        )
 
         is_valid_input, num_nans, num_infs = handle_invalid_x(
             inputs, exclude_invalid_x=exclude_invalid_x
@@ -838,8 +865,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         # Check for problematic z-scoring
         warn_if_zscoring_changes_data(inputs)
 
-        # ? Should I add simformer among these warnings and checks?
-        npe_msg_on_invalid_x(
+        simformer_msg_on_invalid_inputs(
             num_nans,
             num_infs,
             exclude_invalid_x,
@@ -882,9 +908,9 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         show_train_summary: bool = False,
         dataloader_kwargs: Optional[dict] = None,
     ) -> MaskedConditionalVectorFieldEstimator:
-        r"""Returns a vector field estimator that approximates any joint distribution
-        through a continuous transformation from the base noise distribution to
-        the target.
+        r"""Returns a masked vector field estimator that approximates any joint
+        distribution through a continuous transformation from the base
+        noise distribution to the target.
 
         The denoising score matching loss has a high
         variance, which makes it more difficult to detect converegence. To reduce this
@@ -934,18 +960,26 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         self._round = max(self._data_round_index)
 
         if self._round == 0 and self._neural_net is not None:
+            # ? Here I mention the Simformer, as it is done with NPSE in
+            # ? VectorFieldInference, should this rather be more general?
             assert force_first_round_loss or resume_training, (
                 "You have already trained this neural network. After you had trained "
                 "the network, you again appended simulations with `append_simulations"
-                "(theta, x)`, but you did not provide a proposal. If the new "
-                "simulations are sampled from the prior, you can set "
+                "(inputs, condition_masks, edge_masks)`, but you did not provide a "
+                "proposal.\n"
+                "If the new simulations are sampled from the prior, you can set "
                 "`.train(..., force_first_round_loss=True`). However, if the new "
                 "simulations were not sampled from the prior, you should pass the "
-                "proposal, i.e. `append_simulations(theta, x, proposal)`. If "
-                "your samples are not sampled from the prior and you do not pass a "
+                "proposal, i.e. "
+                "   `append_simulations(inputs, condition_masks, edge_masks)`.\n"
+                "If your samples are not sampled from the prior and you do not pass a "
                 "proposal and you set `force_first_round_loss=True`, the result of "
-                "NPSE will not be the true posterior. Instead, it will be the proposal "
-                "posterior, which (usually) is more narrow than the true posterior."
+                "Simformer will not be the true posterior. Instead, it will be the "
+                "proposal posterior, which (usually) is more narrow than the true "
+                "posterior.\n"
+                "NOTE: Simformer's training loss does not use the `prior` in the "
+                "traditional sbi sense; the actual base distribution for diffusion "
+                "is a standard Gaussian."
             )
 
         # Calibration kernels proposed in Lueckmann, Gonçalves et al., 2017.
@@ -1267,7 +1301,6 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
 
         self._joint = joint
         # Store models at end of each round.
-        # TODO: Should expand the model bank for different condition and edge maks
         self._model_bank.append(deepcopy(self._joint))
 
         return deepcopy(self._joint)
@@ -1324,6 +1357,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
 
         self._posterior = posterior
         # Store models at end of each round.
+        # TODO: Should expand the model bank for different condition and edge masks
         self._model_bank.append(deepcopy(self._posterior))
 
         return deepcopy(self._posterior)

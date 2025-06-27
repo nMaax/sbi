@@ -76,7 +76,7 @@ class Simformer(MaskedVectorFieldInference):
         """
         super().__init__(
             prior=prior,
-            vector_field_estimator_builder=vf_estimator,
+            masked_vector_field_estimator_builder=vf_estimator,
             device=device,
             logging_level=logging_level,
             summary_writer=summary_writer,

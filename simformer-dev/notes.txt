@@ -26,6 +26,24 @@ From merge_flow_builders_to_current_main:
 - Finish up the joint classes if you have time
 - Should simformer work in multi-round?
 
+## Edge and condition mask convention
+
+prior: Prior distribution. Its primary use is for rejecting samples that
+                fall outside its defined support. For the core inference process,
+                this prior is ignored, as the actual "prior" over which the diffusion
+                model operates is standard Gaussian noise.
+condition_masks: A boolean mask indicating the role of each node.
+    Expected shape: `(batch_size, num_nodes)`.
+    - `True` (or `1`): The node at this position is observed and its
+        features will be used for conditioning.
+    - `False` (or `0`): The node at this position is latent and its
+        parameters are subject to inference.
+edge_masks: A boolean mask defining the adjacency matrix of the directed
+    acyclic graph (DAG) representing dependencies among nodes.
+    Expected shape: `(batch_size, num_nodes, num_nodes)`.
+    - `True` (or `1`): An edge exists from the row node to the column node.
+    - `False` (or `0`): No edge exists between these nodes.
+
 ## Questions
 
 In Diffuser.initialize() will this always be 1?
