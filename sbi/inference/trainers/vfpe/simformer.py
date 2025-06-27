@@ -25,6 +25,13 @@ class Simformer(MaskedVectorFieldInference):
     Instead of sampling only from Posterior or Likelihood, Simformer is able
     to sample from any arbitrary joint conditional distribution.
 
+    Simformer operates on a unified input tensor representing all nodes
+    in a graph, rather than separate `parameters (theta)` and `data (x)`.
+    The roles of these nodes (latent or observed) and their dependencies
+    are defined by additional masking matrices: `condition_masks` and
+    `edge_masks` respectively.
+
+
     NOTE: Simformer does not support multi-round inference yet.
         Such API is still provided for coherence with sbi, but unused.
 
@@ -32,13 +39,14 @@ class Simformer(MaskedVectorFieldInference):
         Such API is still provided for coherence with sbi, but unused.
         The base distribution of the diffusion process is always
         a standard Gaussian (at t=T), this acts as an implicit "prior" in
-        the latent space of the diffusion.
+        the latent space of the diffusion. Its primary use is for rejecting
+        samples that fall outside its defined support.
     """
 
     def __init__(
         self,
         prior: Optional[Distribution] = None,
-        vf_estimator: Union[
+        mvf_estimator: Union[
             str,
             MaskedVectorFieldEstimatorBuilder,
         ] = "simformer",
@@ -52,16 +60,18 @@ class Simformer(MaskedVectorFieldInference):
         r"""Initialize Simformer.
 
         Args:
-            prior: Prior distribution. (Ignored, for compatibility only)
-            vf_estimator: Neural network architecture for the
-                vector field estimator. Can be a string (e.g., `'simformer_standard'`
-                for a basic Simformer block or `'simformer_dit'` for a DiT-style block)
+            prior: Prior distribution. Its primary use is for rejecting samples that
+                fall outside its defined support. For the core inference process,
+                this prior is ignored, as the actual "prior" over which the diffusion
+                model operates is standard Gaussian noise.
+            vf_estimator: Neural network architecture for the masked
+                vector field estimator. Can be a string (e.g., `'simformer'`)
                 or a callable that implements the `MaskedVectorFieldEstimatorBuilder`
                 protocol. If a callable, `__call__` must accept `inputs`,
                 `conditioning_mask`, and `edge_mask`, and return
                 a `MaskedConditionalVectorFieldEstimator`.
             sde_type: Type of SDE to use. Must be one of ['vp', 've', 'subvp'].
-                Only ve (variance exploding) is supported by now.
+                NOTE: Only ve (variance exploding) is supported by now.
             device: Device to run the training on.
             logging_level: Logging level for the training. Can be an integer or a
                 string.
@@ -76,7 +86,7 @@ class Simformer(MaskedVectorFieldInference):
         """
         super().__init__(
             prior=prior,
-            masked_vector_field_estimator_builder=vf_estimator,
+            masked_vector_field_estimator_builder=mvf_estimator,
             device=device,
             logging_level=logging_level,
             summary_writer=summary_writer,
@@ -93,7 +103,9 @@ class Simformer(MaskedVectorFieldInference):
         self,
         conditional_mask: Tensor,
         edge_mask: Tensor,
-        vector_field_estimator: Optional[MaskedConditionalVectorFieldEstimator] = None,
+        masked_vector_field_estimator: Optional[
+            MaskedConditionalVectorFieldEstimator
+        ] = None,
         prior: Optional[Distribution] = None,
         sample_with: str = "sde",
         **kwargs,
@@ -102,8 +114,8 @@ class Simformer(MaskedVectorFieldInference):
         the vector field estimator.
 
         Args:
-            vector_field_estimator: The vector field estimator that the posterior is
-                based on. If `None`, use the latest vector field estimator that was
+            masked_vector_field_estimator: The vector field estimator that the posterior
+                is based on. If `None`, use the latest vector field estimator that was
                 trained.
             prior: Prior distribution (unused).
             sample_with: Method to use for sampling from the posterior. Can only be
@@ -118,7 +130,7 @@ class Simformer(MaskedVectorFieldInference):
         return self._build_arbitrary_joint(
             conditional_mask,
             edge_mask,
-            vector_field_estimator,
+            masked_vector_field_estimator,
             prior,
             sample_with=sample_with,
             **kwargs,
@@ -133,6 +145,35 @@ class Simformer(MaskedVectorFieldInference):
         sample_with: str = "sde",
         **kwargs,
     ) -> VectorFieldPosterior:
+        r"""Build posterior from the masked vector field estimator and given
+        fixed condition mask and edge mask.
+
+        Args:
+            condition_masks: A boolean mask indicating the role of each node.
+                Expected shape: `(batch_size, num_nodes)`.
+                - `True` (or `1`): The node at this position is observed and its
+                    features will be used for conditioning.
+                - `False` (or `0`): The node at this position is latent and its
+                    parameters are subject to inference.
+            edge_masks: A boolean mask defining the adjacency matrix of the directed
+                acyclic graph (DAG) representing dependencies among nodes.
+                Expected shape: `(batch_size, num_nodes, num_nodes)`.
+                - `True` (or `1`): An edge exists from the row node to the column node.
+                - `False` (or `0`): No edge exists between these nodes.
+            prior: Prior distribution. Its primary use is for rejecting samples that
+                fall outside its defined support. For the core inference process,
+                this prior is ignored, as the actual "prior" over which the diffusion
+                model operates is standard Gaussian noise.
+            sample_with: Method to use for sampling from the posterior. Can be one of
+                'sde' (default) or 'ode'. The 'sde' method uses the score to
+                do a Langevin diffusion step, while the 'ode' method solves a
+                probabilistic ODE with a numerical ODE solver.
+            **kwargs: Additional keyword arguments passed to
+                `VectorFieldBasedPotential`.
+        Returns:
+            Posterior $p(\theta|x)$  with `.sample()` and `.log_prob()` methods.
+        """
+
         return self._build_posterior(
             condition_mask,
             edge_mask,
