@@ -4,81 +4,16 @@ From merge_flow_builders_to_current_main:
 	-> simformer (actual branch for the PR)
 	-> simformer-dev (quick tests)
 
-## Outline
-
-- Masked* version of different classes
-- Masks are automatically generated at loss computation time
-
 ## TODO
 
-- Clean the codebase
-    X Solve comments around codebase (# ? and # !)
-    X Corrections by Manuel: Simformer in NeuralNets renamed in SimformerNet, etc. (search # ? and # !)
-    - Adjust docstring copy/pasted
-    - Optimize code
-    - Remove stupid comments
-    - Renaming conditioning_mask in conditioning_mask
-    - Check that convention (1 =, 0=) for condition mask and (1=, 0=) for edge mask is respected
-    X Move all Masked* versions of classes below their reference
-    - standard_simformer or simformer? How to require ada?
+- Check # ? With Manuel
+- Optimize and clean up code
+- Renaming conditioning_mask in conditioning_mask
 - Generalize wrapper (not just score) and move to another file
 - Condition and Edge mask multiple if handling in VE/ScoreEstimator loss
-- Decide where you want to generate the automatic edge and condition masks
-- Decide at what level you want to see masks to appear among parameters of methods, and where not, also decide accordingly the implementation of the Wrapper as it must be a *callable* by itself
 - Fix ode_fn not passing condition and edge mask to the subsequent Score
 - Fix score, forward, loss, ode_fn not receiving condition and edge mask in Wrapper withing MaskedConditionalVectorFieldEstimator.unmask() method
-- Test extensively with complex shapes, re-check every change you make
+
+### Later
 - Finish up the joint classes if you have time
 - Should simformer work in multi-round?
-
-## Edge and condition mask convention
-
-prior: Prior distribution. Its primary use is for rejecting samples that
-    fall outside its defined support. For the core inference process,
-    this prior is ignored, as the actual "prior" over which the diffusion
-    model operates is standard Gaussian noise.
-
-input: Original data, x0.
-    Shape: [B, T, F]
-
-time: SDE time variable in [0,1].
-    Shape: [B], [B, 1], or scalar
-
-condition_masks: A boolean mask indicating the role of each node.
-- `True` (or `1`): The node at this position is observed and its
-    features will be used for conditioning.
-- `False` (or `0`): The node at this position is latent and its
-    parameters are subject to inference.
-Shape: [T], [B, T], or [B, T, F]
-    - [T]: same mask for all batches
-    - [B, T]: mask per batch and node
-
-edge_masks: A boolean mask defining the adjacency matrix of the directed
-acyclic graph (DAG) representing dependencies among nodes.
-- `True` (or `1`): An edge exists from the row node to the column node.
-- `False` (or `0`): No edge exists between these nodes.
-Shape: [T, T], [B, T, T]
-    - [T, T]: same adjacency for all batches
-    - [B, T, T]: adjacency per batch
-
-## Questions
-
-In Diffuser.initialize() will this always be 1?
-
-	num_batches = (
-		1 if self.predictor.potential_fn.x_is_iid else self.batch_shape.numel()
-	)
-
-Also in plot.py I added .cpu() here:
-
-def ensure_numpy(t: Union[np.ndarray, torch.Tensor]) -> np.ndarray:
-    """
-    Returns np.ndarray if torch.Tensor was provided.
-
-    Used because samples_nd() can only handle np.ndarray.
-    """
-    if isinstance(t, torch.Tensor):
-        return t.cpu().numpy()
-    elif not isinstance(t, np.ndarray):
-        return np.array(t)
-    return t
