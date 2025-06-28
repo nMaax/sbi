@@ -7,8 +7,7 @@ From merge_flow_builders_to_current_main:
 ## TODO
 
 - Check # ? With Manuel
-- Optimize and clean up code
-- Generalize wrapper (not just score) and move to another file
+
 - Condition and Edge mask multiple if handling in VE/ScoreEstimator loss
 - Fix ode_fn not passing condition and edge mask to the subsequent Score
 - Fix score, forward, loss, ode_fn not receiving condition and edge mask in Wrapper withing MaskedConditionalVectorFieldEstimator.unmask() method
