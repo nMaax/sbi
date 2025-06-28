@@ -576,7 +576,7 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
         )
 
     def build_unmasked_conditional_vector_field_estimator(
-        self, condition_mask_for_posterior: Tensor, edge_mask_for_posterior: Tensor
+        self, fixed_condition_mask: Tensor, fixed_edge_mask: Tensor
     ) -> ConditionalVectorFieldEstimator:
         """Returns a callable that behaves like a ConditionalVectorFieldEstimator
         for a fixed condition_mask and edge_mask.
@@ -588,11 +588,18 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
         from sbi.utils.mvfe_wrapper import MaskedConditionalVectorFieldEstimatorWrapper
 
         return MaskedConditionalVectorFieldEstimatorWrapper(
-            self, condition_mask_for_posterior, edge_mask_for_posterior
+            self, fixed_condition_mask, fixed_edge_mask
         )
 
     @abstractmethod
-    def forward(self, input: Tensor, time: Tensor, **kwargs) -> Tensor:
+    def forward(
+        self,
+        input: Tensor,
+        time: Tensor,
+        condition_mask: Tensor,
+        edge_mask: Tensor,
+        **kwargs,
+    ) -> Tensor:
         r"""Forward pass of the score estimator.
 
         Args:
@@ -622,7 +629,13 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
     # -------------------------- ODE METHODS --------------------------
 
     @abstractmethod
-    def ode_fn(self, input: Tensor, times: Tensor) -> Tensor:
+    def ode_fn(
+        self,
+        input: Tensor,
+        times: Tensor,
+        condition_mask: Tensor,
+        edge_mask: Tensor,
+    ) -> Tensor:
         r"""ODE flow function :math:`v(\theta_t, t, x_o)` of the vector field estimator.
 
         The target distribution can be sampled from by solving the following ODE:
@@ -643,7 +656,13 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
 
     # -------------------------- SDE METHODS --------------------------
 
-    def score(self, input: Tensor, t: Tensor) -> Tensor:
+    def score(
+        self,
+        input: Tensor,
+        t: Tensor,
+        condition_mask: Tensor,
+        edge_mask: Tensor,
+    ) -> Tensor:
         r"""Time-dependent score function
 
         .. math::

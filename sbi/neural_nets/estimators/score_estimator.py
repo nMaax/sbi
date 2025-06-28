@@ -574,8 +574,8 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         self,
         input: Tensor,
         time: Tensor,
-        condition_mask,
-        edge_mask,
+        condition_mask: Tensor,
+        edge_mask: Tensor,
     ) -> Tensor:
         r"""Forward pass of the score estimator
         network to compute the conditional score
@@ -636,8 +636,8 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         self,
         input: Tensor,
         t: Tensor,
-        condition_mask: Optional[Tensor] = None,
-        edge_mask: Optional[Tensor] = None,
+        condition_mask: Tensor,
+        edge_mask: Tensor,
     ) -> Tensor:
         r"""Score function of the score estimator.
 
@@ -667,9 +667,9 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         condition_mask: Optional[Tensor] = None,
         edge_mask: Optional[Tensor] = None,
         times: Optional[Tensor] = None,
-        control_variate=True,
-        control_variate_threshold=0.3,
-        rebalance_loss=True,
+        control_variate: bool = True,
+        control_variate_threshold: float = 0.3,
+        rebalance_loss: bool = True,
     ) -> Tensor:
         r"""Defines the denoising score matching loss (e.g., from Song et al., ICLR
         2021). A random diffusion time is sampled from [0,1], and the network is trained
@@ -832,25 +832,20 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
             term3 = mask_f * (D / (s**2))
 
             # Sum over features, keep [B, T]
-            control_variate = term3 - term1 - term2
+            control_variate_term = term3 - term1 - term2
 
             # Only apply control variate where std is small
-            control_variate = torch.where(
+            control_variate_term = torch.where(
                 s < control_variate_threshold,
-                control_variate,
-                torch.zeros_like(control_variate),
+                control_variate_term,
+                torch.zeros_like(control_variate_term),
             )
 
             # Sum over T and F to match loss shape [B, 1, 1]
-            control_variate = torch.sum(
-                control_variate, dim=-1, keepdim=True
-            )  # [B, T, 1]
-            control_variate = torch.sum(
-                control_variate, dim=-2, keepdim=True
-            )  # [B, 1, 1]
+            control_variate_term = control_variate_term.sum(dim=(-2, -1), keepdim=True)
 
             # Add to loss
-            loss = loss + control_variate  # [B, 1, 1]
+            loss = loss + control_variate_term  # [B, 1, 1]
 
         if rebalance_loss:
             # Count number of unobserved (latent) elements per batch
@@ -1019,8 +1014,8 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         self,
         input: Tensor,
         times: Tensor,
-        condition_mask: Optional[Tensor] = None,
-        edge_mask: Optional[Tensor] = None,
+        condition_mask: Tensor,
+        edge_mask: Tensor,
     ) -> Tensor:
         r"""ODE flow function of the score estimator.
 
