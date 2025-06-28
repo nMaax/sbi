@@ -73,7 +73,7 @@ print(inference)
 num_simulations = 1000
 sim_inputs, sim_condition_masks, sim_edge_masks = simformer_simulator(num_simulations)
 print("sim_inputs.shape", sim_inputs.shape)  # Expected: [2000, 2, 3]
-print("sim_conditioning_masks.shape", sim_condition_masks.shape)  # Expected: [2, 3]
+print("sim_condition_masks.shape", sim_condition_masks.shape)  # Expected: [2, 3]
 print("sim_edge_masks.shape", sim_edge_masks.shape)  # Expected: [2, 2]
 
 # %%

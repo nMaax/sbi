@@ -68,7 +68,7 @@ class Simformer(MaskedVectorFieldInference):
                 vector field estimator. Can be a string (e.g., `'simformer'`)
                 or a callable that implements the `MaskedVectorFieldEstimatorBuilder`
                 protocol. If a callable, `__call__` must accept `inputs`,
-                `conditioning_mask`, and `edge_mask`, and return
+                `f`, and `edge_mask`, and return
                 a `MaskedConditionalVectorFieldEstimator`.
             sde_type: Type of SDE to use. Must be one of ['vp', 've', 'subvp'].
                 NOTE: Only ve (variance exploding) is supported by now.

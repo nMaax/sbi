@@ -8,7 +8,6 @@ From merge_flow_builders_to_current_main:
 
 - Check # ? With Manuel
 - Optimize and clean up code
-- Renaming conditioning_mask in conditioning_mask
 - Generalize wrapper (not just score) and move to another file
 - Condition and Edge mask multiple if handling in VE/ScoreEstimator loss
 - Fix ode_fn not passing condition and edge mask to the subsequent Score

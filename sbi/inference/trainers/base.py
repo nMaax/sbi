@@ -653,7 +653,7 @@ class MaskedNeuralInference(ABC):
         self,
         starting_round: int = 0,
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
-        r"""Returns all inputs, conditioning_masks, edge_masks and prior_masks
+        r"""Returns all inputs, condition_masks, edge_masks and prior_masks
         from rounds >= `starting_round`.
 
         If requested, do not return invalid data.
@@ -670,7 +670,7 @@ class MaskedNeuralInference(ABC):
         inputs = get_simulations_since_round(
             self._inputs_roundwise, self._data_round_index, starting_round
         )
-        conditioning_masks = get_simulations_since_round(
+        condition_masks = get_simulations_since_round(
             self._condition_masks_roundwise, self._data_round_index, starting_round
         )
         edge_masks = get_simulations_since_round(
@@ -680,13 +680,13 @@ class MaskedNeuralInference(ABC):
             self._prior_masks, self._data_round_index, starting_round
         )
 
-        return inputs, conditioning_masks, edge_masks, prior_masks
+        return inputs, condition_masks, edge_masks, prior_masks
 
     @abstractmethod
     def append_simulations(
         self,
         inputs: Tensor,
-        conditioning_masks: Tensor,
+        condition_masks: Tensor,
         edge_masks: Tensor,
         exclude_invalid_x: bool = False,
         from_round: int = 0,
@@ -703,7 +703,7 @@ class MaskedNeuralInference(ABC):
 
         Args:
             inputs: Simulation outputs.
-            conditioning_masks: Mask defining which nodes in `inputs` are latent
+            condition_masks: Mask defining which nodes in `inputs` are latent
                 or observed.
             edge_masks: Mask defining dependencies among nodes in `inputs`,
                 equivalent to the adjacency mask in the DAG,
@@ -769,13 +769,11 @@ class MaskedNeuralInference(ABC):
         """
 
         #
-        inputs, conditioning_masks, edge_masks, prior_masks = self.get_simulations(
+        inputs, condition_masks, edge_masks, prior_masks = self.get_simulations(
             starting_round
         )
 
-        dataset = data.TensorDataset(
-            inputs, conditioning_masks, edge_masks, prior_masks
-        )
+        dataset = data.TensorDataset(inputs, condition_masks, edge_masks, prior_masks)
 
         # Get total number of training examples.
         num_examples = inputs.size(0)

@@ -223,15 +223,13 @@ class CustomMaskedPotentialWrapper(MaskedBasePotential):
             self._x_o = self._x_o.to(device)
         super().__init__(self.prior, self._x_o, device)
 
-    def __call__(
-        self, inputs, conditioning_mask, edge_mask, track_gradients: bool = True
-    ):
+    def __call__(self, inputs, condition_mask, edge_mask, track_gradients: bool = True):
         """Calls the custom potential function on given theta.
 
         Note, x_o is re-used from the initialization of the potential function.
         """
         with torch.set_grad_enabled(track_gradients):
-            return self.potential_fn(inputs, conditioning_mask, edge_mask, self.x_o)
+            return self.potential_fn(inputs, condition_mask, edge_mask, self.x_o)
 
 
 class CustomPotentialWrapper(BasePotential):

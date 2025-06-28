@@ -39,7 +39,7 @@ class NeuralJoint:
         Args:
             potential_fn: The potential function from which to draw samples. Must be a
                 `BasePotential` or a `Callable` which takes `inputs`,
-                `conditioning_mask` and `edge_mask` as inputs.
+                `condition_mask` and `edge_mask` as inputs.
             latent_transform: Transformation that will be applied during sampling.
                  Allows to perform, e.g. MCMC in unconstrained space.
             device: Training device, e.g., "cpu", "cuda" or "cuda:0". If None,
