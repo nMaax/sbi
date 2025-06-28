@@ -8,7 +8,6 @@ From merge_flow_builders_to_current_main:
 
 - Check # ? With Manuel
 
-- Condition and Edge mask multiple if handling in VE/ScoreEstimator loss
 - Fix ode_fn not passing condition and edge mask to the subsequent Score
 - Fix score, forward, loss, ode_fn not receiving condition and edge mask in Wrapper withing MaskedConditionalVectorFieldEstimator.unmask() method
 

@@ -133,10 +133,6 @@ _ = pairplot(
 )
 
 # %%
-theta_posterior = posterior.sample((1000,), x=x_obs).cpu()
-
-
-# %%
 
 def simulate_from_theta(theta_samples):
     num_samples = theta_samples.shape[0]
@@ -147,9 +143,9 @@ def simulate_from_theta(theta_samples):
     x_obs_sim = torch.cat([x1, x2], dim=1)
     return x_obs_sim
 
-x_predictive = simulate_from_theta(theta_posterior)
+x_predictive = simulate_from_theta(samples.cpu())
 
-print("Posterior mean theta:", theta_posterior.mean(dim=0))
+print("Posterior mean theta:", samples.mean(dim=0))
 print("Posterior predictives mean: ", torch.mean(x_predictive, axis=0)) # type: ignore
 print("Observation: ", x_obs)
 
