@@ -566,8 +566,6 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
         self.t_min = t_min
         self.t_max = t_max
 
-        # We assume that the base distribution is a Gaussian distribution
-        # and that it is the same for ODE and SDE.
         # We store the mean and std of the base distribution in buffers
         # to transfer them to the device automatically when the model is moved.
         self.register_buffer(
@@ -577,7 +575,7 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
             "_std_base", torch.empty(1, *self.input_shape).fill_(std_base)
         )
 
-    def build_unmasked_conditional_score_estimator(
+    def build_unmasked_conditional_vector_field_estimator(
         self, condition_mask_for_posterior: Tensor, edge_mask_for_posterior: Tensor
     ) -> ConditionalVectorFieldEstimator:
         """
@@ -585,7 +583,9 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
         for a fixed condition_mask and edge_mask.
         """
 
-        class UnmaskedWrapper(ConditionalVectorFieldEstimator):
+        class MaskedConditionalVectorFieldEstimatorWrapper(
+            ConditionalVectorFieldEstimator
+        ):
             def __init__(
                 self, original_estimator, fixed_condition_mask, fixed_edge_mask
             ):
@@ -657,7 +657,9 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                     "_std_base", latent_std_base_flattened.clone().detach()
                 )
 
-            def forward(self, input: Tensor, condition: Tensor, **kwargs) -> Tensor:
+            def forward(
+                self, input: Tensor, condition: Tensor, time: Tensor, **kwargs
+            ) -> Tensor:
                 # Assemble full input from give input and condition
                 # Take (B, T*F) and returns (B, T, F)
                 full_inputs_tensor = self._assemble_full_inputs(input, condition)
@@ -669,15 +671,13 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
                     B, -1, -1
                 )
 
-                # specific kwargs
-                time = kwargs.pop('time')
-
                 # Call the original masked estimator's forward method
                 full_outputs = self._original_estimator.forward(
                     input=full_inputs_tensor,
                     time=time,
                     condition_mask=expanded_cond_mask,
                     edge_mask=expanded_edge_mask,
+                    **kwargs,
                 )
 
                 # Take B, T, F and return (B, num_latent*F) and (B, num_observed*F)
@@ -811,12 +811,12 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
 
                 return latent_part, observed_part
 
-        return UnmaskedWrapper(
+        return MaskedConditionalVectorFieldEstimatorWrapper(
             self, condition_mask_for_posterior, edge_mask_for_posterior
         )
 
     @abstractmethod
-    def forward(self, input: Tensor, **kwargs) -> Tensor:
+    def forward(self, input: Tensor, time: Tensor, **kwargs) -> Tensor:
         r"""Forward pass of the score estimator.
 
         Args:
