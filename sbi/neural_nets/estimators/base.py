@@ -510,7 +510,17 @@ class ConditionalVectorFieldEstimator(ConditionalEstimator, ABC):
 
 
 class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
-    r""" """
+    r"""Base class for masked vector field estimators. That primarily includes
+    score-based and flow matching models.
+
+    The vector field estimator class is a wrapper around neural networks that allows to
+    evaluate the `masked_vector_field`, and provide the `loss` of inputs over masks.
+
+    Note:
+        We assume that the input to the density estimator is a tensor of shape
+        (sample_dim, batch_dim, *input_shape), where input_shape is the dimensionality
+        of the input.
+    """
 
     # When implementing custom estimators,
     # the following properties should be set:

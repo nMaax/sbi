@@ -460,7 +460,42 @@ class ConditionalScoreEstimator(ConditionalVectorFieldEstimator):
 
 
 class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
-    r""" """
+    r"""Score matching for score-based generative models (e.g., denoising diffusion).
+    The estimator neural network (this class) learns the score function, i.e., gradient
+    of the conditional probability density with respect to the input, which can be used
+    to generate samples from the target distribution by solving the SDE starting from
+    the base (Gaussian) distribution.
+
+    We assume the following SDE:
+                        dx = A(t)xdt + B(t)dW,
+    where A(t) and B(t) are the drift and diffusion functions, respectively, and dW is
+    a Wiener process. This will lead to marginal distribution of the form:
+                        p(xt|x0) = N(xt; mean_t(t)*x0, std_t(t)),
+    where mean_t(t) and std_t(t) are the conditional mean and standard deviation at a
+    given time t, respectively.
+
+    References
+    ----------
+    .. [1] Song, Y., Sohl-Dickstein, J., Kingma, D. P., Kumar, A., Ermon, S.,
+           & Poole, B. (2020).
+           "Score-based generative modeling through stochastic differential equations"
+           *Advances in Neural Information Processing Systems*
+           https://arxiv.org/abs/2011.13456
+
+    .. [2] Ho, J., Jain, A., & Abbeel, P. (2020).
+           "Denoising diffusion probabilistic models"
+           *Advances in Neural Information Processing Systems, 33, 6840-6851*
+           https://arxiv.org/abs/2006.11239
+
+    .. [3] Song, Y., & Ermon, S. (2019).
+           "Generative modeling by estimating gradients of the data distribution"
+           *Advances in Neural Information Processing Systems, 32*
+           https://arxiv.org/abs/1907.05600
+
+    NOTE: This will follow the "noise matching" approach, we could also train a
+    "denoising" network aiming to predict the original input given the noised input. We
+    can still approx. the score by Tweedie's formula, but training might be easier.
+    """
 
     # Whether the score is defined for this estimator.
     # Required for gradient-based methods.
@@ -490,7 +525,7 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         Args:
             net: Score estimator neural network with call signature: input, condition,
                 and time (in [0,1])].
-            input_shape: Shape of the input, e.g., the parameters.
+            input_shape: Shape of the input.
             embedding_net: Network to embed the conditioning variable before passing it
                 to the score network.
             weight_fn: Function to compute the weights over time. Can be one of the
@@ -537,22 +572,27 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
 
     def forward(
         self,
-        input: Tensor,  # [B, T, F]
-        time: Tensor,  # [B] or [B, 1]
-        condition_mask,  # [T] or [B, T]
-        edge_mask,  # [T, T] or [B, T, T]
+        input: Tensor,
+        time: Tensor,
+        condition_mask,
+        edge_mask,
     ) -> Tensor:
         r"""Forward pass of the score estimator
         network to compute the conditional score
         at a given time.
 
         Args:
-            input: Original data, x0. (input_batch_shape, *input_shape)
-            time: SDE time variable in [0,1].
-            condition_mask: Mask indicating which nodes are observed (conditioned on)
-                or latent (conditioned off).
-            edge_mask: Mask for edges in the DAG, i.e., dependecies between
-                variables (nodes).
+            input: Original data, x0.
+            time: SDE time variable in [t_min, t_max].
+            condition_masks: A boolean mask indicating the role of each node.
+                - `True` (or `1`): The node at this position is observed and its
+                    features will be used for conditioning.
+                - `False` (or `0`): The node at this position is latent and its
+                    parameters are subject to inference.
+            edge_masks: A boolean mask defining the adjacency matrix of the directed
+                acyclic graph (DAG) representing dependencies among nodes.
+                - `True` (or `1`): An edge exists from the row node to the column node.
+                - `False` (or `0`): No edge exists between these nodes.
 
         Returns:
             Score (gradient of the density) at a given time, matches input shape.
@@ -594,20 +634,25 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
 
     def score(
         self,
-        input: Tensor,  # [B, T, F]
-        t: Tensor,  # [B] or [B, 1]
-        condition_mask: Optional[Tensor] = None,  # [B, T] or [T]
-        edge_mask: Optional[Tensor] = None,  # [T, T] or [B, T, T]
+        input: Tensor,
+        t: Tensor,
+        condition_mask: Optional[Tensor] = None,
+        edge_mask: Optional[Tensor] = None,
     ) -> Tensor:
         r"""Score function of the score estimator.
 
         Args:
-            input: variable whose distribution is estimated.
-            time: Time.
-            condition_mask: Mask indicating which nodes are observed (conditioned on)
-                or latent (conditioned off).
-            edge_mask: Mask for edges in the DAG, i.e., dependecies between
-                variables (nodes).
+            input: Original data, x0.
+            t: SDE time variable in [t_min, t_max].
+            condition_masks: A boolean mask indicating the role of each node.
+                - `True` (or `1`): The node at this position is observed and its
+                    features will be used for conditioning.
+                - `False` (or `0`): The node at this position is latent and its
+                    parameters are subject to inference.
+            edge_masks: A boolean mask defining the adjacency matrix of the directed
+                acyclic graph (DAG) representing dependencies among nodes.
+                - `True` (or `1`): An edge exists from the row node to the column node.
+                - `False` (or `0`): No edge exists between these nodes.
 
         Returns:
             Score function value.
@@ -633,14 +678,28 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         input.
 
         Args:
-            input: Input variable i.e. theta.
+            input: Original data
+                Shape: [B, T, F]
             times: SDE time variable in [t_min, t_max]. Uniformly sampled if None.
-            condition_mask: Mask indicating which nodes are observed (conditioned on)
-                or latent (conditioned off). If not provided, it will be
-                automatically generate by a Bernoulli(p=0.33)
-            edge_mask: Mask for edges in the DAG, i.e., dependecies between
-                variables (nodes). If not provided, it will be
-                automatically generated as a full-connected DAG, i.e., a tensor of ones
+            condition_masks: A boolean mask indicating the role of each node.
+                Shape: `(batch_size, num_nodes)` or `(num_nodes,)`.
+                - `True` (or `1`): The node at this position is observed and its
+                    features will be used for conditioning.
+                - `False` (or `0`): The node at this position is latent and its
+                    parameters are subject to inference.
+                This mask is internally broadcast to match the batch dimension before
+                being passed to `self.net`.
+                If not provided, it will be
+                    automatically generate by a Bernoulli(p=0.33)
+            edge_masks: A boolean mask defining the adjacency matrix of the directed
+                acyclic graph (DAG) representing dependencies among nodes.
+                Shape: `(batch_size, num_nodes, num_nodes)` or `(num_nodes, num_nodes)`
+                - `True` (or `1`): An edge exists from the row node to the column node.
+                - `False` (or `0`): No edge exists between these nodes.
+                This mask is internally broadcast to match the batch dimension before
+                being passed to `self.net`.
+                If not provided, it will be automatically
+                    generated as a full-connected DAG, i.e., a tensor of ones
             control_variate: Whether to use a control variate to reduce the variance of
                 the stochastic loss estimator.
             control_variate_threshold: Threshold for the control variate. If the std
@@ -724,27 +783,20 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         else:
             raise ValueError(f"edge_mask has incorrect dimensions: {edge_mask.shape}")
 
-        # ! Above I do many checks on condition mask dimensions
-        # ! Should I do also here?
         # Model prediction
         score_pred = self.forward(
-            #   [B, T, F]     [B,]   [B, T]          [B, T, T]
-            input_noised,
-            times,
-            condition_mask,
-            edge_mask,
+            input_noised,  # [B, T, F]
+            times,  # [B,]
+            condition_mask,  # [B, T]
+            edge_mask,  # [B, T, T]
         )  # [B, T, F]
 
         # Compute MSE loss, mask out observed entries
         loss = (score_pred - score_target) ** 2.0
-
-        # ! Above I do many checks on condition mask dimensions
-        # ! Should I do also here? This unsqueeze(-1) looks suspect
         loss = torch.where(condition_mask.unsqueeze(-1), torch.zeros_like(loss), loss)
 
         # Since sbi expects loss-per-batch, I sum on both T and F
-        loss = torch.sum(loss, dim=-1, keepdim=True)  # [B, T, 1]
-        loss = torch.sum(loss, dim=-2, keepdim=True)  # [B, 1, 1]
+        loss = loss.sum(dim=(-2, -1), keepdim=True)  # [B, 1, 1]
 
         # For times -> 0 this loss has high variance; a standard method to reduce the
         # variance is to use a control variate, i.e., a term that has zero expectation
@@ -762,8 +814,6 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
 
             # Squeeze std_t for broadcasting
             s = std_t
-            # while s.dim() > 1 and s.shape[-1] == 1:
-            #     s = s.squeeze(-1)  # [B, T] or [B]
 
             # Compute terms for control variate
             # Only apply to unobserved (latent) nodes
@@ -807,11 +857,17 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
             num_elements = (~condition_mask).sum(dim=1, keepdim=True).clamp(min=1)
             loss = loss / num_elements.unsqueeze(-1)
 
+        # Compute weights
         weights = self.weight_fn(times)
         if not isinstance(weights, torch.Tensor):
             weights = torch.tensor(weights, device=input.device, dtype=loss.dtype)
 
-        loss = weights.clone().detach().unsqueeze(-1).unsqueeze(-1) * loss
+        # Ensure weights are broadcastable to [B, 1, 1]
+        while weights.dim() < loss.dim():
+            weights = weights.unsqueeze(-1)
+
+        # Scale loss by weights
+        loss = weights.clone().detach() * loss
 
         return loss
 

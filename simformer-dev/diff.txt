@@ -28,3 +28,6 @@ sbi/utils/vector_field_utils.py # MaskedVectorFieldNet
 
 1. added .cpu() before .numpy() in plots.py
 2. ConditionalVectorFieldEstimator now takes time as keyed parameter in (abstract) forward pass
+
+- Masked under every counterpart
+- Only loss is the smart guy generating masks and handling shapes, all other are brutal

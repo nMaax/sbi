@@ -1209,16 +1209,9 @@ class SimformerNet(MaskedVectorFieldNet):
         ids = torch.arange(T, device=device).unsqueeze(0).expand(B, -1)  # [B, T]
         id_h = self.id_embedding(ids)  # [B, T, dim_id]
 
-        if condition_mask.dim() == 1:
-            # Shape is [T], expand to [B, T, dim_cond]
-            condition_mask_expanded = (
-                condition_mask.unsqueeze(0).unsqueeze(-1).expand(B, T, self.dim_cond)
-            )
-        else:
-            # Shape is [B, T], expand to [B, T, dim_cond]
-            condition_mask_expanded = condition_mask.unsqueeze(-1).expand(
-                B, T, self.dim_cond
-            )
+        condition_mask_expanded = condition_mask.unsqueeze(-1).expand(
+            B, T, self.dim_cond
+        )  # [B, T, dim_cond]
 
         # Conditioning
         # conditioning_parameter: [1, 1, dim_cond]
@@ -1483,7 +1476,25 @@ def build_simformer_network(
     ada_time: bool = False,
     **kwargs,
 ) -> SimformerNet:
-    """Builds a Simformer network."""
+    """Builds a Simformer network.
+
+    Args:
+        batch_x: Batch of xs, used to infer input and node dimensions.
+        batch_y: Batch of ys, unused, kept for compatibility.
+        hidden_features: Dimension of hidden features (dim_hidden in Simformer).
+        num_layers: Number of transformer blocks (num_blocks in Simformer).
+        num_heads: Number of attention heads per block.
+        mlp_ratio: Ratio for MLP hidden dimension in transformer blocks.
+        time_embedding_dim: Number of dimensions for time embedding (dim_t).
+        embedding_net: Embedding network for batch_y, unused, kept for compatibility.
+        dim_val: Dimension of value token for each node.
+        dim_id: Dimension of id embedding for each node.
+        dim_cond: Dimension of conditioning token for each node.
+        ada_time: Whether to use adaptive time conditioning in transformer blocks.
+
+    Returns:
+        A SimformerNet vector field network.
+    """
 
     del kwargs  # Unused
     del batch_y  # Unused
