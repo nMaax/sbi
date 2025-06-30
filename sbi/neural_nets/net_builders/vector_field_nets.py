@@ -671,7 +671,12 @@ class VectorFieldAdaMLP(VectorFieldNet):
 
 class MaskedTimeAdditiveBlock(nn.Module):
     def __init__(
-        self, hidden_dim, cond_dim, num_heads, mlp_ratio=2, activation=nn.GELU
+        self,
+        hidden_dim: int,
+        cond_dim: int,
+        num_heads: int,
+        mlp_ratio: int = 2,
+        activation: Callable = nn.SiLU,
     ):
         super().__init__()
         self.norm1 = nn.LayerNorm(hidden_dim)
@@ -814,7 +819,12 @@ class DiTBlock(nn.Module):
 
 class MaskedDiTBlock(nn.Module):
     def __init__(
-        self, hidden_dim, cond_dim, num_heads, mlp_ratio=2, activation=nn.GELU
+        self,
+        hidden_dim: int,
+        cond_dim: int,
+        num_heads: int,
+        mlp_ratio: int = 2,
+        activation: Callable = nn.SiLU,
     ):
         """Initialize dit transformer block.
 
@@ -830,7 +840,7 @@ class MaskedDiTBlock(nn.Module):
         # adaptive layer norm for attention
         self.ada_affine = nn.Sequential(
             nn.Linear(cond_dim, hidden_dim),
-            nn.SiLU(),
+            activation(),
             nn.Linear(hidden_dim, 6 * hidden_dim),  # 3 for attn, 3 for mlp
         )
 
@@ -1152,12 +1162,16 @@ class SimformerNet(MaskedVectorFieldNet):
         dim_val: int = 64,
         dim_id: int = 32,
         dim_cond: int = 16,
-        dim_t: int = 16,
-        dim_hidden: int = 128,
+        time_embedding_dim: int = 16,
+        hidden_features: int = 128,
         num_blocks: int = 4,
         num_heads: int = 8,
         mlp_ratio: int = 2,
         ada_time: int = False,
+        time_emb_type: str = "random_fourier",
+        sinusoidal_max_freq: float = 0.01,
+        fourier_scale: float = 30.0,
+        activation: Callable = nn.SiLU,
     ):
         super().__init__()
         self.in_features = in_features  # Number of features by each node (F)
@@ -1165,13 +1179,13 @@ class SimformerNet(MaskedVectorFieldNet):
         self.dim_val = dim_val  # Dimension of the value token
         self.dim_id = dim_id  # Dimension of the id token
         self.dim_cond = dim_cond  # Dimension of the conditioning token
-        self.dim_t = dim_t  # Dimension of the time embedding
+        self.dim_t = time_embedding_dim  # Dimension of the time embedding
         self.dim_hidden = (
-            dim_hidden  # Dimension of the latent space in the transformer blocks
+            hidden_features  # Dimension of the latent space in the transformer blocks
         )
         self.num_blocks = num_blocks  # Number of transformer blocks to stack
         self.num_heads = (
-            num_heads  # Number of attention heads per each transfrormer block
+            num_heads  # Number of attention heads per each transformer block
         )
 
         # Tokenize on val
@@ -1184,19 +1198,32 @@ class SimformerNet(MaskedVectorFieldNet):
         self.conditioning_parameter = nn.Parameter(torch.randn(1, 1, dim_cond) * 0.5)
 
         # Time embedding
-        self.time_embedding = RandomFourierTimeEmbedding(dim_t)
+        if isinstance(time_emb_type, str):
+            if time_emb_type == "sinusoidal":
+                self.time_embedding = SinusoidalTimeEmbedding(
+                    embed_dim=time_embedding_dim, max_freq=sinusoidal_max_freq
+                )
+            elif time_emb_type == "random_fourier":
+                self.time_embedding = RandomFourierTimeEmbedding(
+                    embed_dim=time_embedding_dim, scale=fourier_scale
+                )
+            else:
+                raise ValueError(
+                    f"Unknown time_emb_type: {time_emb_type}"
+                )  # assume already a module
 
         # Project input tokens to hidden dim
-        self.in_proj = nn.Linear(dim_val + dim_id + dim_cond, dim_hidden)
+        self.in_proj = nn.Linear(dim_val + dim_id + dim_cond, hidden_features)
 
         # Transformer blocks
         Block = MaskedDiTBlock if ada_time else MaskedTimeAdditiveBlock
         self.blocks = nn.ModuleList([
-            Block(dim_hidden, dim_t, num_heads, mlp_ratio) for _ in range(num_blocks)
+            Block(hidden_features, time_embedding_dim, num_heads, mlp_ratio, activation)
+            for _ in range(num_blocks)
         ])
 
         # Output projection
-        self.out_linear = nn.Linear(dim_hidden, in_features)
+        self.out_linear = nn.Linear(hidden_features, in_features)
 
     def forward(self, inputs, t, condition_mask, edge_mask):
         B, T, F = inputs.shape
@@ -1474,6 +1501,10 @@ def build_simformer_network(
     dim_id: int = 32,
     dim_cond: int = 16,
     ada_time: bool = False,
+    time_emb_type: str = "random_fourier",
+    sinusoidal_max_freq: float = 0.01,
+    fourier_scale: float = 30.0,
+    activation: Callable = nn.SiLU,
     **kwargs,
 ) -> SimformerNet:
     """Builds a Simformer network.
@@ -1510,12 +1541,16 @@ def build_simformer_network(
         dim_val=dim_val,
         dim_id=dim_id,
         dim_cond=dim_cond,
-        dim_t=time_embedding_dim,
-        dim_hidden=hidden_features,
+        time_embedding_dim=time_embedding_dim,
+        hidden_features=hidden_features,
         num_blocks=num_blocks,
         num_heads=num_heads,
         mlp_ratio=mlp_ratio,
         ada_time=ada_time,
+        time_emb_type=time_emb_type,
+        sinusoidal_max_freq=sinusoidal_max_freq,
+        fourier_scale=fourier_scale,
+        activation=activation,
     )
 
     return vectorfield_net

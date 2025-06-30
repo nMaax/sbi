@@ -64,7 +64,11 @@ inference: Simformer = Simformer(
     dim_val=64,
     dim_id=32,
     dim_cond=16,
-    ada_time=False, # TODO: fix
+    ada_time=True, # TODO: fix, raises error at inference time
+    time_emb_type="sinusoidal",
+    sinusoidal_max_freq=0.01,
+    fourier_scale=30.0,
+    activation=nn.SiLU,
 )
 
 print(inference)
