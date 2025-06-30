@@ -5,7 +5,7 @@ from sbi.neural_nets.estimators.score_estimator import ( # type: ignore
 )
 from sbi.neural_nets.net_builders.vector_field_nets import (  # type: ignore
     MaskedDiTBlock,
-    MaskedSimformerBlock,
+    MaskedTimeAdditiveBlock,
     SimformerNet,
 )
 
@@ -21,12 +21,12 @@ def _test_masked_simformer_block():
     num_heads = 8  # Number of attention heads
 
     # Create SimformerNet Block instance
-    masked_simformer_block = MaskedSimformerBlock(
+    masked_simformer_block = MaskedTimeAdditiveBlock(
         dim_hidden_block,
         dim_t,
         num_heads,
     )
-    print(f"MaskedSimformerBlock initialized: {masked_simformer_block}")
+    print(f"MaskedTimeAdditiveBlock initialized: {masked_simformer_block}")
 
     # Define dummy input tensor shapes and values
     batch_size = 4
@@ -49,14 +49,14 @@ def _test_masked_simformer_block():
         t_h = t_h.to(device)
         if edge_mask:
             edge_mask = edge_mask.to(device)
-        print(f"Moved tensors and MaskedSimformerBlock to {device}")
+        print(f"Moved tensors and MaskedTimeAdditiveBlock to {device}")
     else:
         device = torch.device("cpu")
         print("Running on CPU (CUDA not available)")
 
     # Perform forward pass
     output = masked_simformer_block(tokens, t_h, edge_mask)
-    print(f"MaskedSimformerBlock forward pass successful. Output shape: {output.shape}")
+    print(f"MaskedTimeAdditiveBlock forward pass successful. Output shape: {output.shape}")
 
     # Assert the output shape
     # Expected output shape: [B, T, dim_hidden_block]
@@ -64,7 +64,7 @@ def _test_masked_simformer_block():
     assert output.shape == expected_output_shape, (
         f"Expected output shape {expected_output_shape}, but got {output.shape}"
     )
-    print("MaskedSimformerBlock output shape assertion passed!")
+    print("MaskedTimeAdditiveBlock output shape assertion passed!")
 
     return True
 
