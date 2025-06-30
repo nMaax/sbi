@@ -669,7 +669,7 @@ class VectorFieldAdaMLP(VectorFieldNet):
         return h
 
 
-class MaskedSimformerBlock(nn.Module):
+class MaskedTimeAdditiveBlock(nn.Module):
     def __init__(
         self, hidden_dim, cond_dim, num_heads, mlp_ratio=2, activation=nn.GELU
     ):
@@ -1190,7 +1190,7 @@ class SimformerNet(MaskedVectorFieldNet):
         self.in_proj = nn.Linear(dim_val + dim_id + dim_cond, dim_hidden)
 
         # Transformer blocks
-        Block = MaskedDiTBlock if ada_time else MaskedSimformerBlock
+        Block = MaskedDiTBlock if ada_time else MaskedTimeAdditiveBlock
         self.blocks = nn.ModuleList([
             Block(dim_hidden, dim_t, num_heads, mlp_ratio) for _ in range(num_blocks)
         ])
