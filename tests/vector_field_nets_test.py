@@ -11,9 +11,11 @@ import torch.nn as nn
 
 from sbi.neural_nets.embedding_nets import CNNEmbedding
 from sbi.neural_nets.net_builders.vector_field_nets import (
+    SimformerNet,
     VectorFieldMLP,
     VectorFieldTransformer,
     build_adamlp_network,
+    build_simformer_network,
     build_standard_mlp_network,
     build_transformer_network,
 )
@@ -36,8 +38,8 @@ def test_network_shapes(
     """Test whether vector field networks produce correct output shapes."""
     network, inputs, conditions = _build_vector_field_components(
         net_type,
-        input_event_shape,
-        condition_event_shape,
+        input_event_shape,  #! Manage for Simformer, should have an extra dimension
+        condition_event_shape,  #! Manage for Simformer, should have an extra dimension
         batch_dim,
         time_emb_type=time_emb_type,
         activation=activation,
@@ -157,6 +159,45 @@ def test_transformer_network_parameters(
     assert outputs.shape == inputs.shape, "Output shape should match input shape"
 
 
+# ! Could also add time_embedding_dim, dim_val, dim_id, dim_cond etc.
+@pytest.mark.parametrize("hidden_features", [64, 128])
+@pytest.mark.parametrize("num_blocks", [2, 4])
+@pytest.mark.parametrize("num_heads", [4, 8])
+@pytest.mark.parametrize("mlp_ratio", [2, 4, 8])
+@pytest.mark.parametrize("time_emb_type", ["sinusoidal", "random_fourier"])
+@pytest.mark.parametrize("ada_time", [True, False])
+def test_simformer_network_parameters(
+    hidden_features, num_blocks, num_heads, mlp_ratio, time_emb_type, ada_time
+):
+    """Test whether simformer vector field networks can be built with different
+    parameters."""
+    batch_x = torch.randn(10, 5, 3)
+    batch_y = torch.randn(10, 5, 3)
+
+    network = build_simformer_network(
+        batch_x=batch_x,
+        batch_y=batch_y,
+        hidden_features=hidden_features,
+        num_blocks=num_blocks,
+        num_heads=num_heads,
+        mlp_ratio=mlp_ratio,
+        time_emb_type=time_emb_type,
+        ada_time=ada_time,
+    )
+
+    # Verify it's the correct type
+    assert isinstance(network, SimformerNet), "Should be a SimformerNet instance"
+
+    # Test a forward pass to ensure it works
+    inputs = torch.randn(10, 5, 3)
+    condition_masks = torch.bernoulli(torch.rand(10, 5))
+    edge_masks = torch.ones(10, 5, 5)
+    times = torch.rand(10)
+
+    outputs = network(inputs, times, condition_masks, edge_masks)
+    assert outputs.shape == inputs.shape, "Output shape should match input shape"
+
+
 def _build_vector_field_components(
     net_type: str,
     input_event_shape: Tuple[int],
@@ -201,7 +242,19 @@ def _build_vector_field_components(
             time_emb_type=time_emb_type,
         )
     elif net_type == "transformer":
+        # ? Seems like the parameters are wrong here
         network = build_transformer_network(
+            batch_x=batch_x,
+            batch_y=batch_y,
+            hidden_features=64,
+            num_blocks=3,  # ! num_layers
+            num_heads=4,
+            time_embedding_dim=32,
+            embedding_net=embedding_net,
+            time_emb_type=time_emb_type,  # ! doesn't exist
+        )
+    elif net_type == "simformer":
+        network = build_simformer_network(
             batch_x=batch_x,
             batch_y=batch_y,
             hidden_features=64,
@@ -210,6 +263,8 @@ def _build_vector_field_components(
             time_embedding_dim=32,
             embedding_net=embedding_net,
             time_emb_type=time_emb_type,
+            # activation=activiation # ? Should I add this?
+            # ! Could add many other parameters...
         )
     else:
         raise ValueError(f"Unknown network type: {net_type}")
