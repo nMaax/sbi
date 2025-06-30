@@ -131,7 +131,7 @@ def build_vector_field_estimator(
             batch_x=batch_x,
             batch_y=batch_y,
             hidden_features=hidden_dim,
-            num_layers=num_blocks,
+            num_blocks=num_blocks,
             num_heads=num_heads,
             mlp_ratio=mlp_ratio,
             time_embedding_dim=time_embedding_dim,
@@ -1465,7 +1465,7 @@ def build_simformer_network(
     batch_x: Tensor,
     batch_y: Tensor,
     hidden_features: int = 100,
-    num_layers: int = 5,
+    num_blocks: int = 5,
     num_heads: int = 4,
     mlp_ratio: int = 2,
     time_embedding_dim: int = 32,
@@ -1482,7 +1482,7 @@ def build_simformer_network(
         batch_x: Batch of xs, used to infer input and node dimensions.
         batch_y: Batch of ys, unused, kept for compatibility.
         hidden_features: Dimension of hidden features (dim_hidden in Simformer).
-        num_layers: Number of transformer blocks (num_blocks in Simformer).
+        num_blocks: Number of transformer blocks.
         num_heads: Number of attention heads per block.
         mlp_ratio: Ratio for MLP hidden dimension in transformer blocks.
         time_embedding_dim: Number of dimensions for time embedding (dim_t).
@@ -1512,7 +1512,7 @@ def build_simformer_network(
         dim_cond=dim_cond,
         dim_t=time_embedding_dim,
         dim_hidden=hidden_features,
-        num_blocks=num_layers,
+        num_blocks=num_blocks,
         num_heads=num_heads,
         mlp_ratio=mlp_ratio,
         ada_time=ada_time,
