@@ -159,7 +159,6 @@ def test_transformer_network_parameters(
     assert outputs.shape == inputs.shape, "Output shape should match input shape"
 
 
-# ! Could also add time_embedding_dim, dim_val, dim_id, dim_cond etc.
 @pytest.mark.parametrize("hidden_features", [64, 128])
 @pytest.mark.parametrize("num_blocks", [2, 4])
 @pytest.mark.parametrize("num_heads", [4, 8])
@@ -242,12 +241,13 @@ def _build_vector_field_components(
             time_emb_type=time_emb_type,
         )
     elif net_type == "transformer":
-        # ? Seems like the parameters are wrong here
+        # TODO Seems like the parameters are wrong here
+        # `num_blocks` do not exists as param in factory of transformer
         network = build_transformer_network(
             batch_x=batch_x,
             batch_y=batch_y,
             hidden_features=64,
-            num_blocks=3,  # ! num_layers
+            num_blocks=3,
             num_heads=4,
             time_embedding_dim=32,
             embedding_net=embedding_net,
@@ -263,8 +263,6 @@ def _build_vector_field_components(
             time_embedding_dim=32,
             embedding_net=embedding_net,
             time_emb_type=time_emb_type,
-            # activation=activiation # ? Should I add this?
-            # ! Could add many other parameters...
         )
     else:
         raise ValueError(f"Unknown network type: {net_type}")
