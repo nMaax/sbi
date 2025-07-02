@@ -678,6 +678,15 @@ class MaskedTimeAdditiveBlock(nn.Module):
         mlp_ratio: int = 2,
         activation: Callable = nn.SiLU,
     ):
+        """Initialize masked time additive transformer block.
+
+        args:
+            hidden_dim: dimension of hidden features
+            cond_dim: dimension of conditioning features
+            num_heads: number of attention heads
+            mlp_ratio: ratio for mlp hidden dimension
+            activation: activation function
+        """
         super().__init__()
         self.norm1 = nn.LayerNorm(hidden_dim)
         self.attn = nn.MultiheadAttention(
@@ -826,7 +835,7 @@ class MaskedDiTBlock(nn.Module):
         mlp_ratio: int = 2,
         activation: Callable = nn.SiLU,
     ):
-        """Initialize dit transformer block.
+        """Initialize masked dit transformer block.
 
         args:
             hidden_dim: dimension of hidden features
@@ -865,11 +874,12 @@ class MaskedDiTBlock(nn.Module):
         self.norm2 = nn.LayerNorm(hidden_dim)
 
     def forward(self, x, cond, mask):
+        B, T, D = x.shape
+
         ada_params = self.ada_affine(cond)
         attn_shift, attn_scale, attn_gate, mlp_shift, mlp_scale, mlp_gate = (
             ada_params.chunk(6, dim=-1)
         )
-        B, T, D = x.shape
 
         attn_scale = attn_scale.view(B, 1, D)
         attn_shift = attn_shift.view(B, 1, D)
