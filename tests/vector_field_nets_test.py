@@ -24,7 +24,7 @@ from sbi.neural_nets.net_builders.vector_field_nets import (
 @pytest.mark.parametrize("input_event_shape", ((1,), (4,)))
 @pytest.mark.parametrize("condition_event_shape", ((1,), (7,)))
 @pytest.mark.parametrize("batch_dim", (1, 10))
-@pytest.mark.parametrize("net_type", ["mlp", "ada_mlp", "transformer"])
+@pytest.mark.parametrize("net_type", ["mlp", "ada_mlp", "transformer", "simformer"])
 @pytest.mark.parametrize("time_emb_type", ["sinusoidal", "random_fourier"])
 @pytest.mark.parametrize("activation", [nn.GELU, nn.ReLU, nn.SiLU])
 def test_network_shapes(
@@ -36,20 +36,40 @@ def test_network_shapes(
     activation,
 ):
     """Test whether vector field networks produce correct output shapes."""
-    network, inputs, conditions = _build_vector_field_components(
-        net_type,
-        input_event_shape,  #! Manage for Simformer, should have an extra dimension
-        condition_event_shape,  #! Manage for Simformer, should have an extra dimension
-        batch_dim,
-        time_emb_type=time_emb_type,
-        activation=activation,
-    )
 
-    # Create time parameter
-    t = torch.rand((batch_dim,))
+    if net_type == "simformer":
+        num_nodes = 5
+        num_features = input_event_shape[0]
+        simformer_input_event_shape = (num_nodes, num_features)
 
-    # Test forward pass
-    outputs = network(inputs, conditions, t)
+        network, inputs, _ = _build_vector_field_components(
+            net_type,
+            simformer_input_event_shape,
+            condition_event_shape,  # Not used by simformer builder
+            batch_dim,
+            time_emb_type=time_emb_type,
+            activation=activation,
+        )
+        t = torch.rand((batch_dim,))
+        condition_masks = torch.bernoulli(torch.rand(batch_dim, num_nodes))
+        edge_masks = torch.ones(batch_dim, num_nodes, num_nodes)
+        outputs = network(inputs, t, condition_masks, edge_masks)
+    else:
+        network, inputs, conditions = _build_vector_field_components(
+            net_type,
+            input_event_shape,
+            condition_event_shape,
+            batch_dim,
+            time_emb_type=time_emb_type,
+            activation=activation,
+        )
+
+        # Create time parameter
+        t = torch.rand((batch_dim,))
+
+        # Test forward pass
+        outputs = network(inputs, conditions, t)
+
     assert outputs.shape == inputs.shape, "Output shape should match input shape"
 
 
