@@ -749,7 +749,6 @@ def _validate_tensor_properties_and_device(
     return tensor
 
 
-# ? Could generalize this to use above _validate function
 def validate_theta_and_x(
     theta: Any, x: Any, data_device: str = "cpu", training_device: str = "cpu"
 ) -> Tuple[Tensor, Tensor]:
@@ -775,36 +774,17 @@ def validate_theta_and_x(
         data_device: Device where data is stored.
         training_device: Training device for net.
     """
-    assert isinstance(theta, Tensor), "Parameters theta must be a `torch.Tensor`."
-    assert isinstance(x, Tensor), "Simulator output must be a `torch.Tensor`."
+    theta = _validate_tensor_properties_and_device(
+        theta, "theta", data_device, training_device, torch.float32
+    )
+    x = _validate_tensor_properties_and_device(
+        x, "x", data_device, training_device, torch.float32
+    )
 
     assert theta.shape[0] == x.shape[0], (
         f"Number of parameter sets (={theta.shape[0]} must match the number of "
         f"simulation outputs (={x.shape[0]})"
     )
-
-    # I did not fuse these asserts with the `isinstance(x, Tensor)` asserts in order
-    # to give more explicit errors.
-    assert theta.dtype == float32, "Type of parameters must be float32."
-    assert x.dtype == float32, "Type of simulator outputs must be float32."
-
-    if str(x.device) != str(data_device):
-        warnings.warn(
-            f"Data x has device '{x.device}'. "
-            f"Moving x to the data_device '{data_device}'. "
-            f"Training will proceed on device '{training_device}'.",
-            stacklevel=2,
-        )
-        x = x.to(data_device)
-
-    if str(theta.device) != str(data_device):
-        warnings.warn(
-            f"Parameters theta has device '{theta.device}'. "
-            f"Moving theta to the data_device '{data_device}'. "
-            f"Training will proceed on device '{training_device}'.",
-            stacklevel=2,
-        )
-        theta = theta.to(data_device)
 
     return theta, x
 

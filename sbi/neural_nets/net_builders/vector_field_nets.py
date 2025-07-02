@@ -34,7 +34,7 @@ def build_vector_field_estimator(
     z_score_x: Optional[str] = None,
     z_score_y: Optional[str] = None,
     embedding_net: nn.Module = nn.Identity(),
-    sde_type: str = "ve",  # Only used for (masked) score estimator
+    sde_type: str = "ve",
     hidden_features: Union[Sequence[int], int] = 100,
     time_embedding_dim: int = 32,
     num_layers: int = 5,

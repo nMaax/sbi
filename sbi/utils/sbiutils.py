@@ -402,33 +402,6 @@ def nle_nre_apt_msg_on_invalid_x(
             )
 
 
-# ? Should generalize with the two above? Or rather use the NPE one
-def simformer_msg_on_invalid_inputs(
-    num_nans: int, num_infs: int, exclude_invalid_x: bool, algorithm: str
-) -> None:
-    """Warn if there are NaNs or Infs in the inputs, appropriate for Simformer.
-
-    Simformer removes invalid simulations by default if `exclude_invalid_x` is True.
-    This function warns the user accordingly. If `exclude_invalid_x` is False,
-    it warns that invalid inputs are present and training might fail.
-    """
-
-    if num_nans + num_infs > 0:
-        if exclude_invalid_x:
-            logging.warning(
-                f"Found {num_nans} NaN values and {num_infs} Inf values in the "
-                f"simulation inputs. These will be excluded from training"
-                f"for {algorithm}."
-            )
-        else:
-            logging.warning(
-                f"Found {num_nans} NaN simulations and {num_infs} Inf simulations. "
-                "They are not excluded from training due to `exclude_invalid_x=False`."
-                "Training will likely fail, we strongly recommend "
-                f"`exclude_invalid_x=True` for {algorithm}."
-            )
-
-
 def check_warn_and_setstate(
     state_dict: Dict,
     key_name: str,

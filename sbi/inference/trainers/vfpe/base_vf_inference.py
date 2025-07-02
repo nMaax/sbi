@@ -35,7 +35,6 @@ from sbi.utils import (
 from sbi.utils.sbiutils import (
     ImproperEmpirical,
     mask_sims_from_prior,
-    simformer_msg_on_invalid_inputs,
 )
 from sbi.utils.torchutils import assert_all_finite
 from sbi.utils.user_input_checks import validate_inputs_and_masks
@@ -727,12 +726,10 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         """Base class for masked vector field inference methods. It is
         used for Simformer.
 
-        # ? Correct?
         NOTE: Masked Vector field inference does not support multi-round inference
         with flexible proposals yet.
 
         Args:
-            # ? Correct
             prior: Prior distribution. Its primary use is for rejecting samples that
                 fall outside its defined support. For the core inference process,
                 this prior is ignored, as the actual "prior" over which the diffusion
@@ -777,13 +774,8 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
 
     @abstractmethod
     def _build_default_nn_fn(self, **kwargs) -> MaskedVectorFieldEstimatorBuilder:
-        # ? Why was it originally `pass`?
-        # ? Shouldn't be a NotImplementedError be more appropriate?
-        raise NotImplementedError
+        pass
 
-    # ? Having a look at the posterior counterpars
-    # ? Wasn't the parent class doing the same as this, but under @abstract?
-    # ? How should I implement this? (for now it is a NotImplementedError on parent)
     def append_simulations(
         self,
         inputs: Tensor,
@@ -865,7 +857,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         # Check for problematic z-scoring
         warn_if_zscoring_changes_data(inputs)
 
-        simformer_msg_on_invalid_inputs(
+        npe_msg_on_invalid_x(
             num_nans,
             num_infs,
             exclude_invalid_x,
@@ -960,8 +952,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         self._round = max(self._data_round_index)
 
         if self._round == 0 and self._neural_net is not None:
-            # ? Here I mention the Simformer, as it is done with NPSE in
-            # ? VectorFieldInference, should this rather be more general?
+            # TODO: Modify to "not-supported"
             assert force_first_round_loss or resume_training, (
                 "You have already trained this neural network. After you had trained "
                 "the network, you again appended simulations with `append_simulations"
@@ -1198,8 +1189,6 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
 
         return deepcopy(self._neural_net)
 
-    # ? Also this is already implemented in parent class, should I rather define that
-    # ? as abstract?
     def _converged(self, epoch: int, stop_after_epochs: int) -> bool:
         """Return whether the training converged yet and save best model state so far.
 

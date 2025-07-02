@@ -262,6 +262,8 @@ class NeuralInference(ABC):
             NeuralInference object (returned so that this function is chainable).
         """
 
+        # TODO: should this be removed? It is an @abstractmethod
+
         is_valid_x, num_nans, num_infs = handle_invalid_x(x, exclude_invalid_x)
 
         x = x[is_valid_x]

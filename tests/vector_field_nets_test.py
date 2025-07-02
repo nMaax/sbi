@@ -251,7 +251,7 @@ def _build_vector_field_components(
             num_heads=4,
             time_embedding_dim=32,
             embedding_net=embedding_net,
-            time_emb_type=time_emb_type,  # ! doesn't exist
+            time_emb_type=time_emb_type,
         )
     elif net_type == "simformer":
         network = build_simformer_network(
