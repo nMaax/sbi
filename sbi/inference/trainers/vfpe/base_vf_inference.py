@@ -779,8 +779,8 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
     def append_simulations(
         self,
         inputs: Tensor,
-        condition_masks: Tensor,  # ! Could be Optional, default Bernoulli
-        edge_masks: Tensor,  # ! Optional, Default = Ones
+        condition_masks: Tensor,
+        edge_masks: Tensor,
         proposal: Optional[DirectPosterior] = None,
         exclude_invalid_x: Optional[bool] = None,
         data_device: Optional[str] = None,
