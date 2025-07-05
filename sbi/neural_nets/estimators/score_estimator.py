@@ -864,6 +864,10 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         # Scale loss by weights
         loss = weights.clone().detach() * loss
 
+        # ! Should be the proper way to manage shapes, but it scale the final loss
+        # while loss.ndim > 1:
+        #     loss = loss.squeeze()
+
         return loss
 
     def approx_marginal_mean(self, times: Tensor) -> Tensor:
