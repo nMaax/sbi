@@ -1,0 +1,60 @@
+sbi > inference > trainers > vfpe > simformer.py
+Simformer(MaskedVectorFieldInference)
+	- __init__(
+		prior: ignored,
+		vf_estimator: str or MaskedVectorFieldEstimatorBuilder,
+		sde_type: "vp", "ve", "subvp"
+		device: str,
+		...
+	):
+		calls super().__init__(...)
+	- _build_default_nn_fn():
+		# Instanciate the MaskedVectorFieldEstimator from the Builder passed as parameter in init, if available
+	- build_arbitrary_joint(...):
+		calls _build_arbitrary_joint(...) (parent class)
+		returns MaskedVectorFieldDistribution
+
+sbi > inference > trainers > vfpe > base_vf_inference.py
+MaskedVectorFieldInference(MaskedNeuralInferece)
+	- __init__(
+		prior: ignored,
+		vf_estimator: str or MaskedVectorFieldEstimatorBuilder,
+		sde_type: "vp", "ve", "subvp"
+		device: str,
+		...
+	):
+		calls super().__init__(...)
+	- train(...):
+		# Returns a vector field estimator that approximates any joint distribution
+		returns MaskedConditionalVectorFieldEstimator (e.g. MaskedVEScoreEstimator)
+	- append_simulations(...):
+		# Store parameters and simulation outputs to use them for later training
+	- _build_arbitrary_joint(
+		inputs,
+		conditional_mask,
+		edge_mask
+	):
+		returns MaskedVectorFieldJoint
+	- _loss(...)
+	- @abstractmethods{_build_default_nn_fn}
+
+sbi > inference > trainers > base.py
+MaskedNeuralInferece(ABC)
+	- get_simulations(...)
+	- get_dataloaders(...)
+	- @abstract{train, append_simulations, ...}
+
+sbi > inference > joints > vector_field_joint.py
+MaskedVectorFieldJoint(MaskedNeuralJoint) # Wraps the ConditionalScoreEstimator (e.g. VEScoreEstimator) and uses a Diffuser to guide the sampling process
+	- to(...)
+	- sample(...)
+	- sample_batched(...)
+	- log_prob(...)
+	- map(...)
+	- _sample_via_diffusion(...)
+
+sbi > inference > joints > base_joint.py
+MaskedNeuralJoint
+	- ...
+
+On the other hand, MaskedVectorFieldJoint is instead based also on a VectorFieldBasedPotential and a Diffuser, which I also must adapt to my masked case

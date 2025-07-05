@@ -1,0 +1,12 @@
+## Branching
+
+From merge_flow_builders_to_current_main:
+	-> simformer (actual branch for the PR)
+	-> simformer-dev (quick tests)
+
+## TODO
+- Check # ? With Manuel
+
+### Later
+- Finish up the joint classes if you have time
+- Should simformer work in multi-round?

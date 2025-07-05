@@ -1,0 +1,62 @@
+## Pre-existing code
+
+- `base_vf_inference.py` > `VectorFieldInference`: interface for the Inference object that will be used by the user, it orchestrates training, sampling, data storing and everything for the user, the following objects will be called by this Interface at various steps in the use of the Simformer
+- `vector_field_nets.py` (which provides `DiTBlocks`, `RandomFourirerTimeEmbedding` and other components): code to manage the network itself (Transformer with masking), here I will need to make my Simformer network and a factory function for it
+- `score_estimators.py`  (which provides `VEScoreEstimator` and `ConditialScoreEstimator`): here I will use these Score Estimators for implementing the loss on my training process, they will take care to add noise and estimate the score function at each training step
+- `diffuser.py` > `Diffuser`: here I can re-use the diffuser to sample from my Simformer
+
+## ConditionalScoreEstimator, quick walkthrough on un-implemented functions
+
+There exists 4 parameters of our interest:
+
+- A(t),
+- B(t),
+- mean_t(t),
+- std_t(t)
+
+Given a SDE, for the foward diffusion process of the type:
+
+	dx = A(t)xdt + B(t)dW
+
+Which describes how your clean data x0 gradually turns into pure noise xt over time t.
+
+- dx: A tiny change in your data x.
+- A(t)x dt: The drift term. This is the deterministic part. It describes how the data x tends to move or shrink towards a certain mean over a tiny time step dt.
+- B(t) dW: The diffusion term. This is the stochastic (random) part. It describes how much random noise is added to x over a tiny time step dt. dW is a Wiener process.
+
+Given the marginal distribution
+
+	p(xt|x0) = N(xt; mean_t(t)*x0, std_t(t))
+
+Which describes the probability distribution of your noisy data xt at any given time t, if you started from a specific clean data point x0.
+
+The marginal distribution says xt will be a Normal distribution with mean and standard deviation:
+
+- mean_t(t)*x0
+- std_t(t)
+
+Note they both depend on t, while mean also depend on the original data point x0
+
+Then, in code we can define:
+
+mean_t_fn(self, times: Tensor) -> Tensor
+
+	This is mean_t(t) above from the marginal distribution. When multiplied by the original clean data x0, gives you the mean of the noisy data xt at time t.
+	"If I start with x0, how much of x0 is left on average at time t before it's completely drowned out by noise?"
+	For some SDEs, this factor might shrink towards zero (like in VP SDEs), centering the distribution on the origin.
+	For VE SDEs, it's often 1 (meaning the mean of xt is just x0, and all the variance comes from added noise).
+
+std_fn(self, times: Tensor) -> Tensor
+
+	This is std_t(t) from the marginal distribution. It's the standard deviation of the noise that has been added to x0 up to time t.
+	"How much randomness has been accumulated up to time t?"
+
+drift_fn(self, input: Tensor, times: Tensor) -> Tensor
+
+	This is the A(t)x part of the forward SDE. It describes the deterministic push on the data input (which is xt) at time t.
+	"How does the data xt deterministically tend to change over time, ignoring the random noise?"
+
+diffusion_fn(self, input: Tensor, times: Tensor) -> Tensor
+
+	This is the B(t) part of the forward SDE. It describes the magnitude of the random noise added at time t.
+	"How 'strong' is the randomnes I'm adding at time t?"

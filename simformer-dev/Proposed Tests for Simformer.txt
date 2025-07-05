@@ -1,0 +1,23 @@
+Proposed Tests for Simformer
+
+  1. Network and Estimator Tests (sbi/neural_nets/ & sbi/neural_nets/estimators/)
+
+   * `SimformerNet` Test
+   * `MaskedScoreEstimator` Test
+   * `MaskedScoreEstimatorWrapper` Test
+
+  2. Inference Pipeline Tests (sbi/inference/)
+
+   * `Simformer` Trainer Test:
+       * Test the train method of the Simformer class.
+       * Verify that training runs without errors and that the validation loss decreases over a few epochs on a simple,
+         predictable task.
+       * Check that the summary object is correctly populated.
+       * File: tests/vf_estimator_test.py or a new tests/simformer_test.py.
+
+
+   * `Simformer` `append_simulations` Test:
+       * Test the data handling by appending simulations and checking if the internal storage (_inputs_roundwise, etc.)
+         is updated correctly.
+       * Test with exclude_invalid_x to ensure proper handling of NaN and inf values.
+       * File: tests/simformer_test.py.

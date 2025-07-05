@@ -395,6 +395,28 @@ class BoxUniform(Independent):
         )
 
 
+# ! Only used in joint, can remove later
+def ensure_latent_batched(latent: Tensor) -> Tensor:
+    r"""
+    Return variable set latent that has a batch dimension, i.e. has shape
+     (1, shape_of_single_latent_variable)
+
+    NOTE: This is the same as ensure_theta_batched(), only renamed
+    for coherence.
+
+     Args:
+         latent: latent varibles, of shape (n) or (1,n)
+     Returns:
+         Batched variable set latent
+    """
+
+    # => ensure theta has shape (1, dim_parameter)
+    if latent.ndim == 1:
+        latent = latent.unsqueeze(0)
+
+    return latent
+
+
 def ensure_theta_batched(theta: Tensor) -> Tensor:
     r"""
     Return parameter set theta that has a batch dimension, i.e. has shape

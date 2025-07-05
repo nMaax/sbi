@@ -104,6 +104,7 @@ version = {attr = "sbi.__version__"}
 # ruff configs
 [tool.ruff]
 extend-include = ["*.ipynb"]
+extend-exclude = ["simformer-dev/"]
 line-length = 88
 
 [tool.ruff.lint]
@@ -158,3 +159,8 @@ reportUnsupportedDunderAll = false
 reportGeneralTypeIssues = false
 reportInvalidTypeForm = false
 typeCheckingMode = "basic"
+
+# Extra rules for quick modifications
+python.analysis.extraPaths = ["."]
+#reportMissingImports = "none"
+#reportMissingModuleSource = "none"
