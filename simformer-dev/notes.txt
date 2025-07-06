@@ -7,8 +7,6 @@ From merge_flow_builders_to_current_main:
 ## TODO
 	- Implement tests
 		├── bm_test.py
-		├── inference_on_device_test.py
-		├── inference_with_NaN_simulator_test.py
 		├── lc2st_test.py
 		├── linearGaussian_vector_field_test.py
 		├── posterior_nn_test.py
