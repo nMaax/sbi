@@ -177,9 +177,8 @@ def test_masked_score_estimator_loss_shapes(
 
     losses = score_estimator.loss(
         inputs, condition_mask=condition_masks, edge_mask=edge_masks
-    )
-    # ! Loss is returned as shape [1, 1, 1], not [1] --- should I fix?
-    assert losses.shape[0] == batch_dim, "Loss shape mismatch."
+    ).reshape(-1)  # ! Loss is returned as shape [1, 1, 1], not [1] --- should I fix?
+    assert losses.shape == (batch_dim,), "Loss shape mismatch."
 
 
 @pytest.mark.gpu
@@ -296,7 +295,8 @@ def test_unmasked_wrapper_score_estimator_loss_shapes(
     batch_dim,
     score_net,
 ):
-    """Test whether `loss` of MaskedScoreEstimator follows the shape convention."""
+    """Test whether `loss` of MaskedConditionalVectorFieldEstimatorWrapper
+    follows the shape convention."""
     (
         score_estimator,
         inputs,
@@ -318,7 +318,8 @@ def test_unmasked_wrapper_score_estimator_loss_shapes(
 @pytest.mark.parametrize("device", ["cpu", "cuda"])
 @pytest.mark.parametrize("score_net", ["simformer"])
 def test_unmasked_wrapper_score_estimator_on_device(sde_type, device, score_net):
-    """"""
+    """Test whether MaskedConditionalVectorFieldEstimatorWrapper
+    can be moved to the device."""
     # Create condition and edge masks
     condition_mask = torch.ones(5, device=device)
     condition_mask[0] = 0  # Index 0 is latent
@@ -353,7 +354,8 @@ def test_unmasked_wrapper_score_estimator_forward_shapes(
     batch_dim,
     score_net,
 ):
-    """"""
+    """Test whether `forward` of MaskedConditionalVectorFieldEstimatorWrapperù
+    follow the shape convention."""
     (
         score_estimator,
         inputs,
@@ -386,7 +388,8 @@ def _build_unmasked_score_estimator_and_tensors(
     **kwargs,
 ):
     """
-    Helper function for all tests that deal with shapes of masked score estimators.
+    Helper function for all tests that deal with shapes of
+    unmasked wrapper score estimators.
     """
 
     (
