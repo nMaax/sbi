@@ -153,11 +153,13 @@ def _build_score_estimator_and_tensors(
 
 
 @pytest.mark.parametrize("sde_type", ["ve"])
+@pytest.mark.parametrize("input_sample_dim", (1, 2))
 @pytest.mark.parametrize("input_event_shape", ((3, 5), (3, 1)))
 @pytest.mark.parametrize("batch_dim", (1, 10))
 @pytest.mark.parametrize("score_net", ["simformer"])
 def test_masked_score_estimator_loss_shapes(
     sde_type,
+    input_sample_dim,
     input_event_shape,
     batch_dim,
     score_net,
@@ -172,11 +174,12 @@ def test_masked_score_estimator_loss_shapes(
         sde_type,
         input_event_shape,
         batch_dim,
+        input_sample_dim,
         net=score_net,
     )
 
     losses = score_estimator.loss(
-        inputs, condition_mask=condition_masks, edge_mask=edge_masks
+        inputs[0], condition_mask=condition_masks, edge_mask=edge_masks
     )
     assert losses.shape == (batch_dim,), "Loss shape mismatch."
 
@@ -210,11 +213,13 @@ def test_masked_score_estimator_on_device(sde_type, device, score_net):
 
 
 @pytest.mark.parametrize("sde_type", ["ve"])
+@pytest.mark.parametrize("input_sample_dim", (1, 2))
 @pytest.mark.parametrize("input_event_shape", ((5, 1), (5, 4)))
 @pytest.mark.parametrize("batch_dim", (1, 10))
 @pytest.mark.parametrize("score_net", ["simformer"])
 def test_masked_score_estimator_forward_shapes(
     sde_type,
+    input_sample_dim,
     input_event_shape,
     batch_dim,
     score_net,
@@ -229,12 +234,13 @@ def test_masked_score_estimator_forward_shapes(
         sde_type,
         input_event_shape,
         batch_dim,
+        input_sample_dim,
         net=score_net,
     )
     # Batched times
     times = torch.rand((batch_dim,))
     outputs = score_estimator(
-        inputs, time=times, condition_mask=condition_masks, edge_mask=edge_masks
+        inputs[0], time=times, condition_mask=condition_masks, edge_mask=edge_masks
     )
     assert outputs.shape == (
         batch_dim,
@@ -244,7 +250,7 @@ def test_masked_score_estimator_forward_shapes(
     # Single time
     time = torch.rand(())
     outputs = score_estimator(
-        inputs, time=time, condition_mask=condition_masks, edge_mask=edge_masks
+        inputs[0], time=time, condition_mask=condition_masks, edge_mask=edge_masks
     )
     assert outputs.shape == (
         batch_dim,
@@ -256,6 +262,7 @@ def _build_masked_score_estimator_and_tensors(
     sde_type: str,
     input_event_shape: Tuple[int, int],
     batch_dim: int,
+    input_sample_dim: int = 1,
     **kwargs,
 ):
     """
@@ -280,6 +287,13 @@ def _build_masked_score_estimator_and_tensors(
     condition_masks[:, 1] = 1  # Force at least one variable to be observed
     edge_masks = torch.ones(batch_dim, num_nodes, num_nodes)
 
+    inputs = inputs.unsqueeze(0)
+    inputs = inputs.expand(
+        [
+            input_sample_dim,
+        ]
+        + [-1] * (1 + len(input_event_shape))
+    )
     return score_estimator, inputs, condition_masks, edge_masks
 
 
@@ -288,11 +302,13 @@ def _build_masked_score_estimator_and_tensors(
 
 # ? Is this appropriate?
 @pytest.mark.parametrize("sde_type", ["ve"])
+@pytest.mark.parametrize("input_sample_dim", (1, 2))
 @pytest.mark.parametrize("input_event_shape", ((3, 5), (3, 1)))
 @pytest.mark.parametrize("batch_dim", (1, 10))
 @pytest.mark.parametrize("score_net", ["simformer"])
 def test_unmasked_wrapper_score_estimator_loss_shapes(
     sde_type,
+    input_sample_dim,
     input_event_shape,
     batch_dim,
     score_net,
@@ -307,11 +323,12 @@ def test_unmasked_wrapper_score_estimator_loss_shapes(
         sde_type,
         input_event_shape,
         batch_dim,
+        input_sample_dim,
         net=score_net,
     )
 
     with pytest.raises(NotImplementedError):
-        score_estimator.loss(inputs, condition)
+        score_estimator.loss(inputs[0], condition)
 
 
 # ? Is this appropriate?
@@ -347,11 +364,13 @@ def test_unmasked_wrapper_score_estimator_on_device(sde_type, device, score_net)
 
 
 @pytest.mark.parametrize("sde_type", ["ve"])
+@pytest.mark.parametrize("input_sample_dim", (1, 2))
 @pytest.mark.parametrize("input_event_shape", ((3, 5), (3, 1)))
 @pytest.mark.parametrize("batch_dim", (1, 10))
 @pytest.mark.parametrize("score_net", ["simformer"])
 def test_unmasked_wrapper_score_estimator_forward_shapes(
     sde_type,
+    input_sample_dim,
     input_event_shape,
     batch_dim,
     score_net,
@@ -366,25 +385,27 @@ def test_unmasked_wrapper_score_estimator_forward_shapes(
         sde_type,
         input_event_shape,
         batch_dim,
+        input_sample_dim,
         net=score_net,
     )
     # Batched times
     times = torch.rand((batch_dim,))
-    outputs = score_estimator(inputs, condition=conditions, time=times)
+    outputs = score_estimator(inputs[0], condition=conditions, time=times)
 
-    assert outputs.shape == inputs.shape, "Output shape mismatch."
+    assert outputs.shape == inputs[0].shape, "Output shape mismatch."
 
     # Single time
     time = torch.rand(())
-    outputs = score_estimator(inputs, condition=conditions, time=time)
+    outputs = score_estimator(inputs[0], condition=conditions, time=time)
 
-    assert outputs.shape == inputs.shape, "Output shape mismatch."
+    assert outputs.shape == inputs[0].shape, "Output shape mismatch."
 
 
 def _build_unmasked_score_estimator_and_tensors(
     sde_type: str,
     input_event_shape: Tuple[int, int],
     batch_dim: int,
+    input_sample_dim: int = 1,
     **kwargs,
 ):
     """
@@ -401,6 +422,7 @@ def _build_unmasked_score_estimator_and_tensors(
         sde_type,
         input_event_shape,
         batch_dim,
+        input_sample_dim,
         **kwargs,
     )
 
@@ -418,11 +440,11 @@ def _build_unmasked_score_estimator_and_tensors(
     latent_idx = (condition_masks == 0).squeeze()
     observed_idx = (condition_masks == 1).squeeze()
 
-    untangled_inputs = inputs[:, latent_idx, :]  # (B, num_latent, F)
-    untangled_condition = inputs[:, observed_idx, :]  # (B, num_observed, F)
+    untangled_inputs = inputs[:, :, latent_idx, :]  # (B, num_latent, F)
+    untangled_condition = inputs[0, :, observed_idx, :]  # (B, num_observed, F)
 
     return (
         score_estimator,
-        untangled_inputs.reshape(batch_dim, -1),
+        untangled_inputs.reshape(input_sample_dim, batch_dim, -1),
         untangled_condition.reshape(batch_dim, -1),
     )
