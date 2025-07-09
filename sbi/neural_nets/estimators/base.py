@@ -897,11 +897,7 @@ class MaskedConditionalVectorFieldEstimatorWrapper(ConditionalVectorFieldEstimat
         )
 
         # Take B, T, F and return (B, num_latent*F) and (B, num_observed*F)
-        latent_out, _ = self._disassemble_full_outputs(
-            full_outputs, input.shape, condition.shape
-        )
-
-        # latent_out = latent_out.reshape(original_shape)
+        latent_out = self._disassemble_full_outputs(full_outputs, input)
         return latent_out
 
     def loss(
@@ -934,8 +930,8 @@ class MaskedConditionalVectorFieldEstimatorWrapper(ConditionalVectorFieldEstimat
             expanded_edge_mask,
         )
         # Disassemble and flatten the output
-        latent_out, _ = self._disassemble_full_outputs(
-            full_outputs_ode, input.shape, condition.shape
+        latent_out = self._disassemble_full_outputs(
+            full_outputs_ode, input
         )  # Returns (B, num_latent*F)
         return latent_out
 
@@ -959,9 +955,7 @@ class MaskedConditionalVectorFieldEstimatorWrapper(ConditionalVectorFieldEstimat
         )
 
         # Take B, T, F and return (B, num_latent*F) and (B, num_observed*F)
-        latent_score, _ = self._disassemble_full_outputs(
-            full_score_outputs, input.shape, condition.shape
-        )
+        latent_score = self._disassemble_full_outputs(full_score_outputs, input)
         # Returns (B, num_latent * F)
         return latent_score
 
@@ -1002,30 +996,10 @@ class MaskedConditionalVectorFieldEstimatorWrapper(ConditionalVectorFieldEstimat
 
         return full_inputs
 
-    def _disassemble_full_outputs(
-        self, full_outputs, original_latent_shape, original_condition_shape
-    ):
-        latent_part_unflattened = full_outputs[
-            :, self._latent_idx, :
-        ]  # (B, num_latent, F)
-        observed_part_unflattened = full_outputs[
-            :, self._observed_idx, :
-        ]  # (B, num_observed, F)
+    def _disassemble_full_outputs(self, full_outputs, original_latent_tensor):
+        latent_part = full_outputs[:, self._latent_idx, :]  # (B, num_latent, F)
 
-        # latent_part = latent_part_unflattened.reshape(
-        #     latent_part_unflattened.shape[0],
-        #     -1,
-        #     self._num_latent * self._original_F,
-        # )  # (B, ..., num_latent * F)
-        # observed_part = observed_part_unflattened.reshape(
-        #     observed_part_unflattened.shape[0],
-        #     -1,
-        #     self._num_observed * self._original_F,
-        # )  # (B, ..., num_observed * F)
-
-        return latent_part_unflattened.reshape(
-            original_latent_shape
-        ), observed_part_unflattened  # .reshape(original_condition_shape)
+        return latent_part.reshape_as(original_latent_tensor)
 
 
 class UnconditionalEstimator(nn.Module, ABC):
