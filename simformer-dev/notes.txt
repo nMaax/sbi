@@ -15,7 +15,6 @@ From merge_flow_builders_to_current_main:
 		X── vector_field_nets_test.py
 		X── vf_estimator_test.py
 
-	- Fix AdaTime not working
 	- Fix warning and errors on wrapper pytests
 	- Add new parameter options to the pytests (e.g. AdaTime, or .sample_batch() tests)
 	- Check # TODO, # ! and # ? around codebase
