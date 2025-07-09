@@ -1279,7 +1279,7 @@ class SimformerNet(MaskedVectorFieldNet):
         #   True for masked (no attention),
         #   False for allowed (attention)
         for block in self.blocks:
-            h = block(h, t_h, ~edge_mask.bool())
+            h = block(h, t_h, (~edge_mask.bool() if edge_mask is not None else None))
 
         # Output projection
         out = self.out_linear(h)  # [B, T, F]
