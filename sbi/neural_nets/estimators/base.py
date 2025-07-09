@@ -785,20 +785,18 @@ class MaskedConditionalVectorFieldEstimatorWrapper(ConditionalVectorFieldEstimat
             raise TypeError("fixed_condition_mask must be a torch.Tensor.")
         if fixed_condition_mask.dim() != 1:
             raise ValueError(
-                f"fixed_condition_mask must be 1-dimensional, got shape {
-                    fixed_condition_mask.shape
-                }."
+                f"fixed_condition_mask must be 1-dimensional, got shape "
+                f"{fixed_condition_mask.shape}."
             )
         if fixed_condition_mask.shape[0] != T:
             raise ValueError(
-                f"fixed_condition_mask must have length {
-                    T
-                } (matching input_shape[0]), got {fixed_condition_mask.shape[0]}."
+                f"fixed_condition_mask must have length {T} "
+                f"(matching input_shape[0]), got {fixed_condition_mask.shape[0]}."
             )
         if not torch.all((fixed_condition_mask == 0) | (fixed_condition_mask == 1)):
             raise ValueError(
-                "fixed_condition_mask must be boolean (0 or 1, True or False) for "
-                "all entries."
+                "fixed_condition_mask must be boolean (0 or 1, True or False) "
+                "for all entries."
             )
 
         # Input checks for fixed_edge_mask
@@ -806,15 +804,13 @@ class MaskedConditionalVectorFieldEstimatorWrapper(ConditionalVectorFieldEstimat
             raise TypeError("fixed_edge_mask must be a torch.Tensor.")
         if fixed_edge_mask.dim() != 2:
             raise ValueError(
-                f"fixed_edge_mask must be 2-dimensional, got shape {
-                    fixed_edge_mask.shape
-                }."
+                f"fixed_edge_mask must be 2-dimensional, got shape "
+                f"{fixed_edge_mask.shape}."
             )
         if fixed_edge_mask.shape[0] != T or fixed_edge_mask.shape[1] != T:
             raise ValueError(
-                f"fixed_edge_mask must have shape ({T}, {T}), got {
-                    fixed_edge_mask.shape
-                }."
+                f"fixed_edge_mask must have shape ({T}, {T}), got "
+                f"{fixed_edge_mask.shape}."
             )
         if not torch.all((fixed_edge_mask == 0) | (fixed_edge_mask == 1)):
             raise ValueError(
