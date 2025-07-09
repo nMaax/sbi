@@ -15,10 +15,8 @@ From merge_flow_builders_to_current_main:
 		X── vector_field_nets_test.py
 		X── vf_estimator_test.py
 
-	- Implement suggestion Manuel from review
 	- Fix AdaTime not working
 	- Fix sample_batch not working
-	- Fix loss returning tensors of shape [1, 1, 1]
 	- Fix warning and errors on wrapper pytests
 	- Add new parameter options to the pytests (e.g. AdaTime, or .sample_batch() tests)
 	- Check # ! and # ? in tests

@@ -375,7 +375,7 @@ def test_unmasked_wrapper_score_estimator_forward_shapes(
 
     # Single time
     time = torch.rand(())
-    outputs = score_estimator(inputs[0], condition=conditions, time=time)
+    outputs = score_estimator(inputs, condition=conditions, time=time)
 
     # ! Different from standard score estimator, investigate
     assert outputs.shape == inputs.shape, "Output shape mismatch."

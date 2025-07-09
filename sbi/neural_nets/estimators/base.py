@@ -879,9 +879,10 @@ class MaskedConditionalVectorFieldEstimatorWrapper(ConditionalVectorFieldEstimat
     ) -> Tensor:
         # Assemble full input from give input and condition
         # Take (B, T*F) and returns (B, T, F)
-        # original_shape = input.shape
         # TODO: make sure input and condition are in the right shape
+
         full_inputs_tensor = self._assemble_full_inputs(input, condition)
+
         B = full_inputs_tensor.shape[0]
         expanded_cond_mask = self._fixed_condition_mask.unsqueeze(0).expand(B, -1)
         expanded_edge_mask = self._fixed_edge_mask.unsqueeze(0).expand(B, -1, -1)
@@ -896,7 +897,9 @@ class MaskedConditionalVectorFieldEstimatorWrapper(ConditionalVectorFieldEstimat
         )
 
         # Take B, T, F and return (B, num_latent*F) and (B, num_observed*F)
-        latent_out, _ = self._disassemble_full_outputs(full_outputs)
+        latent_out, _ = self._disassemble_full_outputs(
+            full_outputs, input.shape, condition.shape
+        )
 
         # latent_out = latent_out.reshape(original_shape)
         return latent_out
@@ -932,7 +935,7 @@ class MaskedConditionalVectorFieldEstimatorWrapper(ConditionalVectorFieldEstimat
         )
         # Disassemble and flatten the output
         latent_out, _ = self._disassemble_full_outputs(
-            full_outputs_ode
+            full_outputs_ode, input.shape, condition.shape
         )  # Returns (B, num_latent*F)
         return latent_out
 
@@ -956,7 +959,9 @@ class MaskedConditionalVectorFieldEstimatorWrapper(ConditionalVectorFieldEstimat
         )
 
         # Take B, T, F and return (B, num_latent*F) and (B, num_observed*F)
-        latent_score, _ = self._disassemble_full_outputs(full_score_outputs)
+        latent_score, _ = self._disassemble_full_outputs(
+            full_score_outputs, input.shape, condition.shape
+        )
         # Returns (B, num_latent * F)
         return latent_score
 
@@ -997,7 +1002,9 @@ class MaskedConditionalVectorFieldEstimatorWrapper(ConditionalVectorFieldEstimat
 
         return full_inputs
 
-    def _disassemble_full_outputs(self, full_outputs):
+    def _disassemble_full_outputs(
+        self, full_outputs, original_latent_shape, original_condition_shape
+    ):
         latent_part_unflattened = full_outputs[
             :, self._latent_idx, :
         ]  # (B, num_latent, F)
@@ -1005,18 +1012,20 @@ class MaskedConditionalVectorFieldEstimatorWrapper(ConditionalVectorFieldEstimat
             :, self._observed_idx, :
         ]  # (B, num_observed, F)
 
-        latent_part = latent_part_unflattened.reshape(
-            latent_part_unflattened.shape[0],
-            -1,
-            self._num_latent * self._original_F,
-        )  # (B, ..., num_latent * F)
-        observed_part = observed_part_unflattened.reshape(
-            observed_part_unflattened.shape[0],
-            -1,
-            self._num_observed * self._original_F,
-        )  # (B, ..., num_observed * F)
+        # latent_part = latent_part_unflattened.reshape(
+        #     latent_part_unflattened.shape[0],
+        #     -1,
+        #     self._num_latent * self._original_F,
+        # )  # (B, ..., num_latent * F)
+        # observed_part = observed_part_unflattened.reshape(
+        #     observed_part_unflattened.shape[0],
+        #     -1,
+        #     self._num_observed * self._original_F,
+        # )  # (B, ..., num_observed * F)
 
-        return latent_part, observed_part
+        return latent_part_unflattened.reshape(
+            original_latent_shape
+        ), observed_part_unflattened  # .reshape(original_condition_shape)
 
 
 class UnconditionalEstimator(nn.Module, ABC):
