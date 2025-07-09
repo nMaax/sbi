@@ -63,29 +63,17 @@ class MaskedVectorFieldEstimatorBuilder(Protocol):
     """Protocol for building a masked vector field estimator from data."""
 
     def __call__(self, inputs: Tensor) -> MaskedConditionalVectorFieldEstimator:
-        """Build a masked vector field estimator from inputs, condition_mask, edge_mask,
-        which mainly inform the shape of the input and the condition to
-        the neural network.
+        """Build a masked vector field estimator from inputs, which mainly inform
+        the shape of the input to the neural network.
 
         Generally, it can also be used to z-score the data, but not in the case
         of masked vector field estimators.
 
         Args:
             inputs: Simulation outputs.
-            condition_masks: A boolean mask indicating the role of each node.
-                Expected shape: `(batch_size, num_nodes)`.
-                - `True` (or `1`): The node at this position is observed and its
-                  features will be used for conditioning.
-                - `False` (or `0`): The node at this position is latent and its
-                  parameters are subject to inference.
-            edge_masks: A boolean mask defining the adjacency matrix of the directed
-                acyclic graph (DAG) representing dependencies among nodes.
-                Expected shape: `(batch_size, num_nodes, num_nodes)`.
-                - `True` (or `1`): An edge exists from the row node to the column node.
-                - `False` (or `0`): No edge exists between these nodes.
 
         Returns:
-            Masked vector field estimator.
+            MaskedVectorFieldEstimator.
         """
         ...
 
@@ -714,7 +702,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
     def __init__(
         self,
         prior: Optional[Distribution] = None,
-        masked_vector_field_estimator_builder: Union[
+        mvf_estimator_builder: Union[
             str, MaskedVectorFieldEstimatorBuilder
         ] = "simformer",
         device: str = "cpu",
@@ -734,7 +722,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
                 fall outside its defined support. For the core inference process,
                 this prior is ignored, as the actual "prior" over which the diffusion
                 model operates is standard Gaussian noise.
-            masked_vector_field_estimator_builder: Neural network architecture for the
+            mvf_estimator_builder: Neural network architecture for the
                 masked vector field estimator. Can be a string (e.g. 'simformer')
                 or a callable that implements the `MaskedVectorFieldEstimatorBuilder`
                 protocol with `__call__` that receives `inputs`, `condition_mask`,
@@ -761,14 +749,14 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         # `_build_neural_net`. It will be called in the first round and receive
         # thetas and xs as inputs, so that they can be used for shape inference and
         # potentially for z-scoring.
-        check_estimator_arg(masked_vector_field_estimator_builder)
-        if isinstance(masked_vector_field_estimator_builder, str):
+        check_estimator_arg(mvf_estimator_builder)
+        if isinstance(mvf_estimator_builder, str):
             self._build_neural_net = self._build_default_nn_fn(
-                vector_field_estimator_builder=masked_vector_field_estimator_builder,
+                vector_field_estimator_builder=mvf_estimator_builder,
                 **kwargs,
             )
         else:
-            self._build_neural_net = masked_vector_field_estimator_builder
+            self._build_neural_net = mvf_estimator_builder
 
         self._proposal_roundwise = []
 
@@ -780,7 +768,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         self,
         inputs: Tensor,
         condition_masks: Tensor,
-        edge_masks: Tensor,
+        edge_masks: Optional[Tensor] = None,
         proposal: Optional[DirectPosterior] = None,
         exclude_invalid_x: Optional[bool] = None,
         data_device: Optional[str] = None,
@@ -837,6 +825,10 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
 
         if data_device is None:
             data_device = self._device
+
+        num_nodes = condition_masks.shape[-1]
+        if edge_masks is None:
+            edge_masks = torch.ones((num_nodes, num_nodes))
 
         inputs, condition_masks, edge_masks = validate_inputs_and_masks(
             inputs,
@@ -1298,9 +1290,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         self,
         condition_mask: Tensor,
         edge_mask: Tensor,
-        masked_vector_field_estimator: Optional[
-            MaskedConditionalVectorFieldEstimator
-        ] = None,
+        mvf_estimator: Optional[MaskedConditionalVectorFieldEstimator] = None,
         prior: Optional[Distribution] = None,
         sample_with: str = "sde",
         **kwargs,
@@ -1322,7 +1312,7 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
                 Expected shape: `(batch_size, num_nodes, num_nodes)`.
                 - `True` (or `1`): An edge exists from the row node to the column node.
                 - `False` (or `0`): No edge exists between these nodes.
-            masked_vector_field_estimator: The masked vector field estimator that the
+            mvf_estimator_builder: The masked vector field estimator that the
                 posterior is based on. If `None`, use the latest vector field estimator
                 that was trained.
             prior: The prior distribution.
@@ -1349,16 +1339,16 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         else:
             utils.check_prior(prior)
 
-        if masked_vector_field_estimator is None:
-            masked_vector_field_estimator = self._neural_net
+        if mvf_estimator is None:
+            mvf_estimator = self._neural_net
             # If internal net is used device is defined.
             device = self._device
         # Otherwise, infer it from the device of the net parameters.
         else:
-            device = str(next(masked_vector_field_estimator.parameters()).device)
+            device = str(next(mvf_estimator.parameters()).device)
 
         posterior = VectorFieldPosterior(
-            masked_vector_field_estimator.build_unmasked_conditional_vector_field_estimator(
+            mvf_estimator.build_conditional_vector_field_estimator(
                 condition_mask, edge_mask
             ),
             prior,
@@ -1432,4 +1422,4 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
             )
 
         assert_all_finite(loss, f"{cls_name} loss")
-        return calibration_kernel(inputs).unsqueeze(-1).unsqueeze(-1) * loss
+        return calibration_kernel(inputs) * loss

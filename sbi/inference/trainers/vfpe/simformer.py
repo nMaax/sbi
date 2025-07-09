@@ -3,6 +3,7 @@
 
 from typing import Literal, Optional, Union
 
+import torch
 from torch import Tensor
 from torch.distributions import Distribution
 from torch.utils.tensorboard.writer import SummaryWriter
@@ -20,27 +21,29 @@ from sbi.neural_nets.factory import simformer_nn
 
 
 class Simformer(MaskedVectorFieldInference):
-    """Simformer as in Gloeckler et al. (2024)
+    """Simformer as in Gloeckler et al. (2024).
 
-    Instead of sampling only from Posterior or Likelihood, Simformer is able
-    to sample from any arbitrary joint conditional distribution.
+    Simformer enables sampling from arbitrary conditional joint distributions,
+    not just posterior or likelihood, by operating on a unified input tensor
+    that represents all variables.
 
-    Simformer operates on a unified input tensor representing all nodes
-    in a graph, rather than separate `parameters (theta)` and `data (x)`.
-    The roles of these nodes (latent or observed) and their dependencies
-    are defined by additional masking matrices: `condition_masks` and
-    `edge_masks` respectively.
+    The roles of variables—latent (to be inferred) or observed (to be conditioned on)—
+    are specified by a boolean mask `condition_mask`.
+    - `True` (or `1`): The variable is observed (conditioned on).
+    - `False` (or `0`): The variable is latent (to be inferred).
 
+    Dependencies among variables are defined by a boolean adjacency matrix `edge_mask`.
+    - `True` (or `1`): An edge exists from the row variable to the column variable.
+    - `False` (or `0`): No edge exists.
 
-    NOTE: Simformer does not support multi-round inference yet.
-        Such API is still provided for coherence with sbi, but unused.
+    For posterior inference $p(\\theta|x)$, set theta variables as latent and
+    data (x) variables as observed in `condition_mask`.
 
-    NOTE: Simformer does not support prior in the sense of other sbi methods.
-        Such API is still provided for coherence with sbi, but unused.
-        The base distribution of the diffusion process is always
-        a standard Gaussian (at t=T), this acts as an implicit "prior" in
-        the latent space of the diffusion. Its primary use is for rejecting
-        samples that fall outside its defined support.
+    NOTE:
+        - Multi-round inference is not supported yet; the API is present for coherence
+          with sbi.
+        - The `prior` argument is currently only used for sample rejection in cases
+          where the inferred variables fall outside expected support.
     """
 
     def __init__(
@@ -64,11 +67,10 @@ class Simformer(MaskedVectorFieldInference):
                 fall outside its defined support. For the core inference process,
                 this prior is ignored, as the actual "prior" over which the diffusion
                 model operates is standard Gaussian noise.
-            vf_estimator: Neural network architecture for the masked
+            mvf_estimator: Neural network architecture for the masked
                 vector field estimator. Can be a string (e.g., `'simformer'`)
                 or a callable that implements the `MaskedVectorFieldEstimatorBuilder`
-                protocol. If a callable, `__call__` must accept `inputs`,
-                `f`, and `edge_mask`, and return
+                protocol. If a callable, `__call__` must accept `inputs`, and return
                 a `MaskedConditionalVectorFieldEstimator`.
             sde_type: Type of SDE to use. Must be one of ['vp', 've', 'subvp'].
                 NOTE: Only ve (variance exploding) is supported by now.
@@ -86,7 +88,7 @@ class Simformer(MaskedVectorFieldInference):
         """
         super().__init__(
             prior=prior,
-            masked_vector_field_estimator_builder=mvf_estimator,
+            mvf_estimator_builder=mvf_estimator,
             device=device,
             logging_level=logging_level,
             summary_writer=summary_writer,
@@ -99,48 +101,11 @@ class Simformer(MaskedVectorFieldInference):
         net_type = kwargs.pop("vector_field_estimator_builder", "simformer")
         return simformer_nn(model=net_type, **kwargs)
 
-    def build_arbitrary_joint(
-        self,
-        conditional_mask: Tensor,
-        edge_mask: Tensor,
-        masked_vector_field_estimator: Optional[
-            MaskedConditionalVectorFieldEstimator
-        ] = None,
-        prior: Optional[Distribution] = None,
-        sample_with: str = "sde",
-        **kwargs,
-    ) -> VectorFieldJoint:
-        r"""Build an arbitrary conditional joint distribution from
-        the vector field estimator.
-
-        Args:
-            masked_vector_field_estimator: The vector field estimator that the posterior
-                is based on. If `None`, use the latest vector field estimator that was
-                trained.
-            prior: Prior distribution (unused).
-            sample_with: Method to use for sampling from the posterior. Can only be
-                'sde' (default).
-            **kwargs: Additional keyword arguments passed to
-                `VectorFieldBasedPotential`.
-
-        Returns:
-            Conditional distribution of latent nodes given the observed nodes
-            and the edge structure.  With `.sample()` and `.log_prob()` methods.
-        """
-        return self._build_arbitrary_joint(
-            conditional_mask,
-            edge_mask,
-            masked_vector_field_estimator,
-            prior,
-            sample_with=sample_with,
-            **kwargs,
-        )
-
     def build_posterior(
         self,
         condition_mask: Tensor,
-        edge_mask: Tensor,
-        vector_field_estimator: Optional[MaskedConditionalVectorFieldEstimator] = None,
+        edge_mask: Optional[Tensor] = None,
+        mvf_estimator: Optional[MaskedConditionalVectorFieldEstimator] = None,
         prior: Optional[Distribution] = None,
         sample_with: str = "sde",
         **kwargs,
@@ -174,10 +139,14 @@ class Simformer(MaskedVectorFieldInference):
             Posterior $p(\theta|x)$  with `.sample()` and `.log_prob()` methods.
         """
 
+        num_nodes = condition_mask.shape[-1]
+        if edge_mask is None:
+            edge_mask = torch.ones((num_nodes, num_nodes))
+
         return self._build_posterior(
             condition_mask,
             edge_mask,
-            masked_vector_field_estimator=vector_field_estimator,
+            mvf_estimator=mvf_estimator,
             prior=prior,
             sample_with=sample_with,
             **kwargs,
@@ -185,8 +154,21 @@ class Simformer(MaskedVectorFieldInference):
 
     def build_likelihood(
         self,
-        vector_field_estimator: Optional[MaskedConditionalVectorFieldEstimator] = None,
+        conditional_mask: Tensor,
+        edge_mask: Optional[Tensor] = None,
+        mvf_estimator: Optional[MaskedConditionalVectorFieldEstimator] = None,
         prior: Optional[Distribution] = None,
         sample_with: str = "sde",
     ):
+        raise NotImplementedError
+
+    def build_arbitrary_joint(
+        self,
+        conditional_mask: Tensor,
+        edge_mask: Optional[Tensor] = None,
+        mvf_estimator: Optional[MaskedConditionalVectorFieldEstimator] = None,
+        prior: Optional[Distribution] = None,
+        sample_with: str = "sde",
+        **kwargs,
+    ) -> VectorFieldJoint:
         raise NotImplementedError

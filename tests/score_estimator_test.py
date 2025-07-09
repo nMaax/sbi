@@ -177,7 +177,7 @@ def test_masked_score_estimator_loss_shapes(
 
     losses = score_estimator.loss(
         inputs, condition_mask=condition_masks, edge_mask=edge_masks
-    ).reshape(-1)  # ! Loss is returned as shape [1, 1, 1], not [1] --- should I fix?
+    )
     assert losses.shape == (batch_dim,), "Loss shape mismatch."
 
 
@@ -333,7 +333,7 @@ def test_unmasked_wrapper_score_estimator_on_device(sde_type, device, score_net)
             net=score_net,
         )
         .to(device)
-        .build_unmasked_conditional_vector_field_estimator(condition_mask, edge_mask)
+        .build_conditional_vector_field_estimator(condition_mask, edge_mask)
     )
 
     inputs = torch.randn(100, 1, device=device)
@@ -409,7 +409,7 @@ def _build_unmasked_score_estimator_and_tensors(
     edge_masks = edge_masks[0].clone().detach()
 
     # Build unmasked score estimator (wrapper)
-    score_estimator = score_estimator.build_unmasked_conditional_vector_field_estimator(
+    score_estimator = score_estimator.build_conditional_vector_field_estimator(
         condition_masks,
         edge_masks,
     )

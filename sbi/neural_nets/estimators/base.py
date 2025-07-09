@@ -575,7 +575,7 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
             "_std_base", torch.empty(1, *self.input_shape).fill_(std_base)
         )
 
-    def build_unmasked_conditional_vector_field_estimator(
+    def build_conditional_vector_field_estimator(
         self, fixed_condition_mask: Tensor, fixed_edge_mask: Tensor
     ) -> ConditionalVectorFieldEstimator:
         """Returns a callable that behaves like a ConditionalVectorFieldEstimator
@@ -595,13 +595,14 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
         edge_mask: Tensor,
         **kwargs,
     ) -> Tensor:
-        r"""Forward pass of the score estimator.
+        r"""Forward pass of the masked conditional vector field estimator.
 
         Args:
-            input: Input variables.
-
-        Raises:
-            NotImplementedError: This method should be implemented by sub-classes.
+            input: Input variables of shape (batch_dim, *input_shape).
+            time: Time variable tensor.
+            condition_mask: Mask tensor indicating observed/latent nodes.
+            edge_mask: Mask tensor indicating edges in the graph.
+            **kwargs: Additional keyword arguments.
         """
         ...
 
@@ -750,8 +751,76 @@ class MaskedConditionalVectorFieldEstimator(MaskedConditionalEstimator, ABC):
 
 
 class MaskedConditionalVectorFieldEstimatorWrapper(ConditionalVectorFieldEstimator):
+    r"""Base class for wrapper to adapt masked conditional vector field estimator
+    to a conditional vector field estimator interface.
+
+    This wrapper adapts a MaskedConditionalVectorFieldEstimator to the
+    ConditionalVectorFieldEstimator interface by taking a fixed edge and condition
+    mask. It assembles the input and condition tensors into the full input expected
+    by the masked estimator, calls the masked estimator, and then disassembles the
+    output to return only the relevant latent part. This allows using a masked estimator
+    as if it were a standard conditional estimator for a fixed mask configuration.
+    """
+
     def __init__(self, original_estimator, fixed_condition_mask, fixed_edge_mask):
+        r"""Base class for masked vector field estimator wrapper to adapt it to a
+        vector field estimator API.
+
+        Args:
+            original_estimator: The MaskedConditionalVectorFieldEstimator instance
+                to wrap.
+            fixed_condition_mask: 1D tensor indicating which nodes are
+                observed/conditioned on (1) or latent/to be inferred (0).
+            fixed_edge_mask: 2D tensor indicating dependencies among input
+              variables
+                - `True` (or `1`): An edge exists from the row variable to the
+                     column variable
+                - `False` (or `0`): No edge exists.
+        """
+
         T, F = original_estimator.input_shape
+
+        # Input checks for fixed_condition_mask
+        if not isinstance(fixed_condition_mask, torch.Tensor):
+            raise TypeError("fixed_condition_mask must be a torch.Tensor.")
+        if fixed_condition_mask.dim() != 1:
+            raise ValueError(
+                f"fixed_condition_mask must be 1-dimensional, got shape {
+                    fixed_condition_mask.shape
+                }."
+            )
+        if fixed_condition_mask.shape[0] != T:
+            raise ValueError(
+                f"fixed_condition_mask must have length {
+                    T
+                } (matching input_shape[0]), got {fixed_condition_mask.shape[0]}."
+            )
+        if not torch.all((fixed_condition_mask == 0) | (fixed_condition_mask == 1)):
+            raise ValueError(
+                "fixed_condition_mask must be boolean (0 or 1, True or False) for "
+                "all entries."
+            )
+
+        # Input checks for fixed_edge_mask
+        if not isinstance(fixed_edge_mask, torch.Tensor):
+            raise TypeError("fixed_edge_mask must be a torch.Tensor.")
+        if fixed_edge_mask.dim() != 2:
+            raise ValueError(
+                f"fixed_edge_mask must be 2-dimensional, got shape {
+                    fixed_edge_mask.shape
+                }."
+            )
+        if fixed_edge_mask.shape[0] != T or fixed_edge_mask.shape[1] != T:
+            raise ValueError(
+                f"fixed_edge_mask must have shape ({T}, {T}), got {
+                    fixed_edge_mask.shape
+                }."
+            )
+        if not torch.all((fixed_edge_mask == 0) | (fixed_edge_mask == 1)):
+            raise ValueError(
+                "fixed_edge_mask must be boolean (0 or 1, True or False) "
+                "for all entries."
+            )
 
         num_latent = int(torch.sum(fixed_condition_mask == 0).item())
         num_observed = int(torch.sum(fixed_condition_mask == 1).item())
@@ -779,20 +848,17 @@ class MaskedConditionalVectorFieldEstimatorWrapper(ConditionalVectorFieldEstimat
 
         self._original_estimator = original_estimator
 
-        # Ensure input_part and condition_part are on the same device
-        device = next(original_estimator.net.parameters()).device
+        # Move masks to the correct device and register them as buffers.
         self.register_buffer(
             "_fixed_condition_mask",
-            fixed_condition_mask.to(device).clone().detach(),
+            fixed_condition_mask.clone().detach(),
         )
-        self.register_buffer(
-            "_fixed_edge_mask", fixed_edge_mask.to(device).clone().detach()
-        )
+        self.register_buffer("_fixed_edge_mask", fixed_edge_mask.clone().detach())
 
         # Extract indices for latent (0) and observed (1) nodes
         # from the fixed_condition_mask
-        self._latent_idx = (fixed_condition_mask == 0).nonzero(as_tuple=True)[0]
-        self._observed_idx = (fixed_condition_mask == 1).nonzero(as_tuple=True)[0]
+        self._latent_idx = (self._fixed_condition_mask == 0).nonzero(as_tuple=True)[0]
+        self._observed_idx = (self._fixed_condition_mask == 1).nonzero(as_tuple=True)[0]
 
         # Get the mean/std for the latent nodes from the original estimator
         latent_mean_base_unflattened = original_estimator.mean_base[
@@ -809,11 +875,16 @@ class MaskedConditionalVectorFieldEstimatorWrapper(ConditionalVectorFieldEstimat
         self.register_buffer("_mean_base", latent_mean_base_flattened.clone().detach())
         self.register_buffer("_std_base", latent_std_base_flattened.clone().detach())
 
+        device = next(original_estimator.net.parameters()).device
+        self.to(device)
+
     def forward(
         self, input: Tensor, condition: Tensor, time: Tensor, **kwargs
     ) -> Tensor:
         # Assemble full input from give input and condition
         # Take (B, T*F) and returns (B, T, F)
+        # original_shape = input.shape
+        # TODO: make sure input and condition are in the right shape
         full_inputs_tensor = self._assemble_full_inputs(input, condition)
         B = full_inputs_tensor.shape[0]
         expanded_cond_mask = self._fixed_condition_mask.unsqueeze(0).expand(B, -1)
@@ -829,7 +900,9 @@ class MaskedConditionalVectorFieldEstimatorWrapper(ConditionalVectorFieldEstimat
         )
 
         # Take B, T, F and return (B, num_latent*F) and (B, num_observed*F)
-        latent_out, condition_out = self._disassemble_full_outputs(full_outputs)
+        latent_out, _ = self._disassemble_full_outputs(full_outputs)
+
+        # latent_out = latent_out.reshape(original_shape)
         return latent_out
 
     def loss(

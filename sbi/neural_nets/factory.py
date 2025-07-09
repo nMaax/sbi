@@ -89,6 +89,38 @@ def simformer_nn(
     ada_time: bool = False,
     **kwargs: Any,
 ) -> Callable:
+    r"""
+
+
+    Returns a function that builds a Simformer for learning arbitrary distributions.
+
+    The returned function is to be passed to the inference class when using the flexible
+    interface.
+
+    Note that in the view of the Simformer, there is no theta or x, just inputs with
+    variable condition and edge masks defining relationships between variables.
+
+    Args:
+        model (str): Name of the model architecture to use. Default is "simformer".
+        sde_type (str): Type of stochastic differential equation (SDE) to use.
+        hidden_features (int): Number of hidden features in each layer. Default is 100.
+        num_heads (int): Number of attention heads in the transformer layers.
+        num_layers (int): Number of transformer layers. Default is 8.
+        mlp_ratio (int): Ratio of MLP hidden dimension to embedding dimension.
+        time_embedding_dim (int): Dimension of the time embedding.
+        embedding_net (nn.Module): Optional embedding network to preprocess inputs.
+        dim_val (int): Dimension of value embeddings.
+        dim_id (int): Dimension of identifier embeddings.
+        dim_cond (int): Dimension of conditional embeddings.
+        ada_time (bool): Whether to use adaptive time embeddings.
+        **kwargs (Any): Additional keyword arguments passed to the underlying estimator
+            builder.
+    Returns:
+        Callable: A function that takes batch inputs and returns a masked score
+            matching estimator.
+
+    """
+
     kwargs = dict(
         zip(
             (

@@ -6,22 +6,81 @@ From merge_flow_builders_to_current_main:
 
 ## TODO
 	- Implement tests
-		├── bm_test.py
-		├── lc2st_test.py
+		├── bm_test.py <--- benchmarks (later, maybe NO)
+		├── lc2st_test.py (NO)
 		├── linearGaussian_vector_field_test.py
-		├── posterior_nn_test.py
-		├── sbc_test.py
-		├── score_estimator_test.py
-		├── vector_field_nets_test.py
-		├── vf_estimator_test.py
+		├── posterior_nn_test.py <--- NeuralPosterior checks
+		├── sbc_test.py <--- (NO) Simulation Based Calibration
+		X── score_estimator_test.py
+		X── vector_field_nets_test.py
+		X── vf_estimator_test.py
 
 	- Implement suggestion Manuel from review
 	- Fix AdaTime not working
 	- Fix sample_batch not working
 	- Fix loss returning tensors of shape [1, 1, 1]
-	- Fix warning on wrapper pytests
+	- Fix warning and errors on wrapper pytests
 	- Add new parameter options to the pytests (e.g. AdaTime, or .sample_batch() tests)
 	- Check # ! and # ? in tests
+
+##
+
+  1. What is Simulation-Based Calibration (SBC)?
+
+
+  At its core, SBC is a procedure to check if a posterior inference method is well-calibrated. A well-calibrated
+  posterior accurately represents the uncertainty about the parameters. It shouldn't be too confident (too narrow) or
+  too uncertain (too wide), nor should it be systematically biased.
+
+  The SBC procedure works as follows:
+
+
+   1. Simulate Ground Truth: You start by drawing a "true" parameter set θ_true from the prior distribution p(θ).
+   2. Generate Data: You then use this θ_true to run your simulator, generating a corresponding "true" observation x_true.
+   3. Perform Inference: You treat x_true as your observed data and run your SBI algorithm (like NPE, NLE, etc.) to get an
+      approximate posterior distribution q(θ | x_true).
+   4. Calculate the Rank: Now, the key step: you check where your original θ_true falls within the posterior q(θ |
+      x_true). You do this by drawing many samples from the posterior and calculating the "rank" of θ_true—that is, how
+      many of the posterior samples are smaller than θ_true.
+   5. Repeat: You repeat this entire process many times (e.g., thousands of times), collecting a distribution of ranks.
+
+
+  The Main Idea: If the inference algorithm is perfectly calibrated, the distribution of these ranks should be uniform.
+  Any significant deviation from a uniform distribution indicates a problem with the posterior approximation (e.g., it
+  might be biased, overconfident, or underconfident).
+
+  2. What does sbc_test.py do?
+
+  The sbc_test.py file automates this entire process to test the different inference methods in sbi.
+
+
+  It contains several key functions:
+
+
+   * `run_sbc(thetas, xs, posterior, ...)`: This is the main function that executes the SBC procedure. It takes a set of
+     ground-truth thetas and their corresponding xs (from steps 1 & 2), and the trained posterior object. It then
+     performs step 4 for every (theta, x) pair and returns the calculated ranks. It also returns samples from the
+     "data-averaged posterior" (DAP), which is another diagnostic quantity.
+
+
+   * `check_sbc(ranks, prior_samples, dap_samples, ...)`: This function takes the ranks produced by run_sbc and performs
+     statistical tests to check if they are uniformly distributed. It does this in two ways:
+       * Kolmogorov-Smirnov (KS) Test: A classical statistical test that compares the distribution of ranks to a uniform
+         distribution. It returns a p-value; high p-values are good, indicating no significant deviation from uniformity.
+       * Classifier Two-Sample Test (C2ST): It trains a classifier to distinguish between the calculated ranks and a set
+         of perfectly uniform samples. If the classifier's accuracy is around 0.5, it means the ranks are
+         indistinguishable from uniform, which is the desired outcome.
+
+
+   * The Tests Themselves (`test_running_sbc`, `test_consistent_sbc_results`, etc.): The pytest functions in this file
+     set up various scenarios (different inference methods like NPE and NPSE, different priors) and then use run_sbc and
+     check_sbc to assert that the results are statistically consistent with a well-calibrated posterior.
+
+
+  In summary, `sbc_test.py` is a quality control suite for the entire `sbi` library. It ensures that the posteriors
+  produced by the inference algorithms are not just "close" to the true posterior, but that they are statistically
+  sound and correctly represent the uncertainty in the inference.
+
 
 ### Later
 - Finish up the joint classes if you have time

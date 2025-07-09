@@ -581,7 +581,7 @@ def check_if_proposal_has_default_x(proposal: Any):
         )
 
 
-class MaskedNeuralInference(ABC):
+class MaskedNeuralInference(NeuralInference):
     """Abstract base class for masked neural inference methods."""
 
     def __init__(
@@ -689,7 +689,7 @@ class MaskedNeuralInference(ABC):
         self,
         inputs: Tensor,
         condition_masks: Tensor,
-        edge_masks: Tensor,
+        edge_masks: Optional[Tensor] = None,
         exclude_invalid_x: bool = False,
         from_round: int = 0,
         algorithm: Optional[str] = None,
@@ -705,10 +705,11 @@ class MaskedNeuralInference(ABC):
 
         Args:
             inputs: Simulation outputs.
-            condition_masks: Mask defining which nodes in `inputs` are latent
+            condition_masks: Mask defining which variables in `inputs` are latent
                 or observed.
-            edge_masks: Mask defining dependencies among nodes in `inputs`,
-                equivalent to the adjacency mask in the DAG,
+            edge_masks: Mask defining dependencies among variables in `inputs`,
+                equivalent to the adjacency mask in the DAG. If `None` it
+                defaults to all ones, i.e., all variables attend each other
             exclude_invalid_x: Whether invalid simulations are discarded during
                 training. If `False`, The inference algorithm raises an error when
                 invalid simulations are found. If `True`, invalid simulations are
@@ -727,25 +728,7 @@ class MaskedNeuralInference(ABC):
         Returns:
             NeuralInference object (returned so that this function is chainable).
         """
-        raise NotImplementedError
-
-    @abstractmethod
-    def train(
-        self,
-        training_batch_size: int = 200,
-        learning_rate: float = 5e-4,
-        validation_fraction: float = 0.1,
-        stop_after_epochs: int = 20,
-        max_num_epochs: Optional[int] = None,
-        clip_max_norm: Optional[float] = 5.0,
-        calibration_kernel: Optional[Callable] = None,
-        exclude_invalid_x: bool = True,
-        discard_prior_samples: bool = False,
-        retrain_from_scratch: bool = False,
-        show_train_summary: bool = False,
-    ) -> NeuralPosterior:
-        """"""
-        raise NotImplementedError
+        pass
 
     def get_dataloaders(
         self,
@@ -814,178 +797,3 @@ class MaskedNeuralInference(ABC):
         val_loader = data.DataLoader(dataset, **val_loader_kwargs)
 
         return train_loader, val_loader
-
-    @abstractmethod
-    def _converged(self, epoch: int, stop_after_epochs: int) -> bool:
-        """Return whether the training converged yet and save best model state so far.
-
-        Checks for improvement in validation performance over previous epochs.
-
-        Args:
-            epoch: Current epoch in training.
-            stop_after_epochs: How many fruitless epochs to let pass before stopping.
-
-        Returns:
-            Whether the training has stopped improving, i.e. has converged.
-        """
-        raise NotImplementedError
-
-    def _default_summary_writer(self) -> SummaryWriter:
-        """Return summary writer logging to method- and simulator-specific directory."""
-
-        method = self.__class__.__name__
-        logdir = Path(
-            get_log_root(), method, datetime.now().isoformat().replace(":", "_")
-        )
-        return SummaryWriter(logdir)
-
-    @staticmethod
-    def _describe_round(round_: int, summary: Dict[str, list]) -> str:
-        epochs = summary["epochs_trained"][-1]
-        best_validation_loss = summary["best_validation_loss"][-1]
-
-        description = f"""
-        -------------------------
-        ||||| ROUND {round_ + 1} STATS |||||:
-        -------------------------
-        Epochs trained: {epochs}
-        Best validation performance: {best_validation_loss:.4f}
-        -------------------------
-        """
-
-        return description
-
-    @staticmethod
-    def _maybe_show_progress(show: bool, epoch: int) -> None:
-        if show:
-            # end="\r" deletes the print statement when a new one appears.
-            # https://stackoverflow.com/questions/3419984/. `\r` in the beginning due
-            # to #330.
-            print("\r", f"Training neural network. Epochs trained: {epoch}", end="")
-
-    def _report_convergence_at_end(
-        self, epoch: int, stop_after_epochs: int, max_num_epochs: int
-    ) -> None:
-        if self._converged(epoch, stop_after_epochs):
-            print(
-                "\r",
-                f"Neural network successfully converged after {epoch} epochs.",
-                end="",
-            )
-        elif max_num_epochs == epoch:
-            warn(
-                "Maximum number of epochs `max_num_epochs={max_num_epochs}` reached,"
-                "but network has not yet fully converged. Consider increasing it.",
-                stacklevel=2,
-            )
-
-    def _summarize(
-        self,
-        round_: int,
-    ) -> None:
-        """Update the summary_writer with statistics for a given round.
-
-        During training several performance statistics are added to the summary, e.g.,
-        using `self._summary['key'].append(value)`. This function writes these values
-        into summary writer object.
-
-        Args:
-            round: index of round
-
-        Scalar tags:
-            - epochs_trained:
-                number of epochs trained
-            - best_validation_loss:
-                best validation loss (for each round).
-            - validation_loss:
-                validation loss for every epoch (for each round).
-            - training_loss
-                training loss for every epoch (for each round).
-            - epoch_durations_sec
-                epoch duration for every epoch (for each round)
-
-        """
-
-        # Add most recent training stats to summary writer.
-        self._summary_writer.add_scalar(
-            tag="epochs_trained",
-            scalar_value=self._summary["epochs_trained"][-1],
-            global_step=round_ + 1,
-        )
-
-        self._summary_writer.add_scalar(
-            tag="best_validation_loss",
-            scalar_value=self._summary["best_validation_loss"][-1],
-            global_step=round_ + 1,
-        )
-
-        # Add validation loss for every epoch.
-        # Offset with all previous epochs.
-        offset = (
-            torch.tensor(self._summary["epochs_trained"][:-1], dtype=torch.int)
-            .sum()
-            .item()
-        )
-        for i, vlp in enumerate(self._summary["validation_loss"][offset:]):
-            self._summary_writer.add_scalar(
-                tag="validation_loss",
-                scalar_value=vlp,
-                global_step=offset + i,
-            )
-
-        for i, tlp in enumerate(self._summary["training_loss"][offset:]):
-            self._summary_writer.add_scalar(
-                tag="training_loss",
-                scalar_value=tlp,
-                global_step=offset + i,
-            )
-
-        for i, eds in enumerate(self._summary["epoch_durations_sec"][offset:]):
-            self._summary_writer.add_scalar(
-                tag="epoch_durations_sec",
-                scalar_value=eds,
-                global_step=offset + i,
-            )
-
-        self._summary_writer.flush()
-
-    @property
-    def summary(self):
-        return self._summary
-
-    def __getstate__(self) -> Dict:
-        """Returns the state of the object that is supposed to be pickled.
-
-        Attributes that can not be serialized are set to `None`.
-
-        Returns:
-            Dictionary containing the state.
-        """
-        warn(
-            "When the inference object is pickled, the behaviour of the loaded object "
-            "changes in the following two ways: "
-            "1) `.train(..., retrain_from_scratch=True)` is not supported. "
-            "2) When the loaded object calls the `.train()` method, it generates a new "
-            "tensorboard summary writer (instead of appending to the current one).",
-            stacklevel=2,
-        )
-        dict_to_save = {}
-        unpicklable_attributes = ["_summary_writer", "_build_neural_net"]
-        for key in self.__dict__:
-            if key in unpicklable_attributes:
-                dict_to_save[key] = None
-            else:
-                dict_to_save[key] = self.__dict__[key]
-        return dict_to_save
-
-    def __setstate__(self, state_dict: Dict):
-        """Sets the state when being loaded from pickle.
-
-        Also creates a new summary writer (because the previous one was set to `None`
-        during serializing, see `__get_state__()`).
-
-        Args:
-            state_dict: State to be restored.
-        """
-        state_dict["_summary_writer"] = self._default_summary_writer()
-        self.__dict__ = state_dict

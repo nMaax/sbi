@@ -14,8 +14,8 @@ NUM_LAT_NODES = NUM_SIM_NODES - NUM_OBS_NODES
 
 
 def simformer_simulator(num_simulations):
-    theta1 = torch.randn(num_simulations, NUM_NODE_FEATURES) * 3.0 + 8
-    theta2 = torch.randn(num_simulations, NUM_NODE_FEATURES) * 1.5 + 6.0
+    theta1 = torch.randn(num_simulations, NUM_NODE_FEATURES) * 3.0 + 12
+    theta2 = torch.randn(num_simulations, NUM_NODE_FEATURES) * 1.5 + 4.0
 
     x1 = theta1 + torch.randn(num_simulations, NUM_NODE_FEATURES)
     x2 = theta2 + torch.randn(num_simulations, NUM_NODE_FEATURES)
@@ -113,11 +113,14 @@ edge_mask_single_sample = torch.ones((NUM_SIM_NODES, NUM_SIM_NODES), dtype=torch
 
 posterior = inference.build_posterior(
     condition_mask=condition_mask_single_sample,
-    edge_mask=edge_mask_single_sample,
+    #edge_mask=edge_mask_single_sample,
 )
 
 # %%
-x_obs = torch.as_tensor([8.7, 6.3]).view(1, -1)
+x_obs = torch.as_tensor([
+    [12.7, 4.3],
+    #[12.7, 4.3]
+]).view(1, -1)
 
 # %%
 
@@ -128,12 +131,14 @@ print(f"{samples.shape=}")
 # %%
 
 from sbi.analysis import pairplot
+import numpy as np
 
 _ = pairplot(
     samples.reshape(-1, NUM_LAT_NODES * NUM_NODE_FEATURES),
-    limits=[[0, 20]] * (NUM_LAT_NODES * NUM_NODE_FEATURES),
+    limits=[[0, 16]] * (NUM_LAT_NODES * NUM_NODE_FEATURES),
     figsize=(8, 8),
     labels=[rf"$\theta_{{{i + 1}}}$" for i in range(NUM_LAT_NODES * NUM_NODE_FEATURES)],
+    ticks=[[4, 12] for _ in range(NUM_LAT_NODES * NUM_NODE_FEATURES)],
 )
 
 # %%
