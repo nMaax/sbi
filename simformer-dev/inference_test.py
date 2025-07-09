@@ -117,14 +117,17 @@ posterior = inference.build_posterior(
 )
 
 # %%
-x_obs = torch.as_tensor([
+
+x_obs = torch.tensor([
     [12.7, 4.3],
-    #[12.7, 4.3]
-]).view(1, -1)
+    [11.8, 4.5],
+    [12.8, 3.5],
+], device="cuda")
+print(f"{x_obs.shape=}")
 
 # %%
 
-samples = posterior.sample((10000,), x=x_obs)
+samples = posterior.sample_batched(torch.Size((1000,)), x=x_obs)
 
 print(f"{samples.shape=}")
 
@@ -133,8 +136,11 @@ print(f"{samples.shape=}")
 from sbi.analysis import pairplot
 import numpy as np
 
+num_samples = samples.shape[0]
+last_batch_samples = samples[:, -1, :]  # Select samples for the last batch
+
 _ = pairplot(
-    samples.reshape(-1, NUM_LAT_NODES * NUM_NODE_FEATURES),
+    last_batch_samples.reshape(-1, NUM_LAT_NODES * NUM_NODE_FEATURES),
     limits=[[0, 16]] * (NUM_LAT_NODES * NUM_NODE_FEATURES),
     figsize=(8, 8),
     labels=[rf"$\theta_{{{i + 1}}}$" for i in range(NUM_LAT_NODES * NUM_NODE_FEATURES)],
