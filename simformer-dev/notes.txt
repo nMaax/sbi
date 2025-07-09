@@ -18,6 +18,7 @@ From merge_flow_builders_to_current_main:
 	- Fix AdaTime not working
 	- Fix sample_batch not working
 	- Fix warning and errors on wrapper pytests
+  - input_sample_dim parameter missing in score_estimator_test.py
 	- Add new parameter options to the pytests (e.g. AdaTime, or .sample_batch() tests)
 	- Check # ! and # ? in tests
 

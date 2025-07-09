@@ -372,14 +372,12 @@ def test_unmasked_wrapper_score_estimator_forward_shapes(
     times = torch.rand((batch_dim,))
     outputs = score_estimator(inputs, condition=conditions, time=times)
 
-    # ! Different from standard score estimator, investigate
     assert outputs.shape == inputs.shape, "Output shape mismatch."
 
     # Single time
     time = torch.rand(())
     outputs = score_estimator(inputs, condition=conditions, time=time)
 
-    # ! Different from standard score estimator, investigate
     assert outputs.shape == inputs.shape, "Output shape mismatch."
 
 
@@ -423,4 +421,8 @@ def _build_unmasked_score_estimator_and_tensors(
     untangled_inputs = inputs[:, latent_idx, :]  # (B, num_latent, F)
     untangled_condition = inputs[:, observed_idx, :]  # (B, num_observed, F)
 
-    return score_estimator, untangled_inputs, untangled_condition
+    return (
+        score_estimator,
+        untangled_inputs.reshape(batch_dim, -1),
+        untangled_condition.reshape(batch_dim, -1),
+    )
