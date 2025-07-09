@@ -18,7 +18,7 @@ From merge_flow_builders_to_current_main:
 	- Fix AdaTime not working
 	- Fix warning and errors on wrapper pytests
 	- Add new parameter options to the pytests (e.g. AdaTime, or .sample_batch() tests)
-	- Check # ! and # ? in tests
+	- Check # TODO, # ! and # ? around codebase
 
 ##
 

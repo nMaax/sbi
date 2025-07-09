@@ -768,6 +768,7 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
                 input,
                 input_noised,
             )
+        # TODO: should add a raise error here too
 
         # If edge_mask is None, generate one of all ones [T, T] (fully connected graph)
         if edge_mask is None:

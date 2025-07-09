@@ -1278,6 +1278,7 @@ class SimformerNet(MaskedVectorFieldNet):
         # Torch convention:
         #   True for masked (no attention),
         #   False for allowed (attention)
+        t_h = t_h.expand(B, t_h.shape[1])
         for block in self.blocks:
             h = block(h, t_h, (~edge_mask.bool() if edge_mask is not None else None))
 
