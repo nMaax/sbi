@@ -12,13 +12,12 @@ NUM_NODE_FEATURES = 5
 NUM_OBS_NODES = 2
 NUM_LAT_NODES = NUM_SIM_NODES - NUM_OBS_NODES
 
-
 def simformer_simulator(num_simulations):
     theta1 = torch.randn(num_simulations, NUM_NODE_FEATURES) * 3.0 + 12
     theta2 = torch.randn(num_simulations, NUM_NODE_FEATURES) * 1.5 + 4.0
 
-    x1 = theta1 + torch.randn(num_simulations, NUM_NODE_FEATURES)
-    x2 = theta2 + torch.randn(num_simulations, NUM_NODE_FEATURES)
+    x1 = theta1 + torch.randn_like(theta1)
+    x2 = theta2 + torch.randn_like(theta2)
 
     inputs_tensor = torch.stack([theta1, theta2, x1, x2], dim=1)
 
@@ -118,10 +117,11 @@ posterior = inference.build_posterior(
 
 # %%
 
+# Prepare data
 x_obs = torch.tensor([
-    [*[12.7]*5, *[4.3]*5],
-    [*[11.8]*5, *[4.5]*5],
-    [*[12.8]*5, *[3.5]*5],
+    [*[12.7]*NUM_NODE_FEATURES, *[4.3]*NUM_NODE_FEATURES],
+    [*[11.8]*NUM_NODE_FEATURES, *[4.5]*NUM_NODE_FEATURES],
+    [*[12.8]*NUM_NODE_FEATURES, *[3.5]*NUM_NODE_FEATURES],
 ], device="cuda")
 print(f"{x_obs.shape=}")
 
@@ -149,19 +149,19 @@ _ = pairplot(
 
 # %%
 
-# def simulate_from_theta(theta_samples):
-#     num_samples = theta_samples.shape[0]
-#     theta1 = theta_samples[:, 0].unsqueeze(1)
-#     theta2 = theta_samples[:, 1].unsqueeze(1)
-#     x1 = theta1 + torch.randn(num_samples, NUM_NODE_FEATURES)
-#     x2 = theta2 + torch.randn(num_samples, NUM_NODE_FEATURES)
-#     x_obs_sim = torch.cat([x1, x2], dim=1)
-#     return x_obs_sim
+def simulate_from_theta(theta_samples):
+    num_samples = theta_samples.shape[0]
+    theta1 = theta_samples[:, 0].unsqueeze(1)
+    theta2 = theta_samples[:, 1].unsqueeze(1)
+    x1 = theta1 + torch.randn_like(theta1)
+    x2 = theta2 + torch.randn_like(theta2)
+    x_obs_sim = torch.cat([x1, x2], dim=1)
+    return x_obs_sim
 
-# x_predictive = simulate_from_theta(samples.cpu())
+x_predictive = simulate_from_theta(samples.cpu())
 
-# print("Posterior mean theta:", samples.mean(dim=0))
-# print("Posterior predictives mean: ", torch.mean(x_predictive, axis=0)) # type: ignore
-# print("Observation: ", x_obs)
+print("Posterior mean theta:", samples.mean(dim=0))
+print("Posterior predictives mean: ", torch.mean(x_predictive, axis=0)) # type: ignore
+print("Observation: ", x_obs)
 
 # %%
