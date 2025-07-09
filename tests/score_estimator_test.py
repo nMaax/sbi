@@ -276,6 +276,8 @@ def _build_masked_score_estimator_and_tensors(
     inputs = building_inputs[:batch_dim]
     # ? Is ok to use a bernoulli in tests?
     condition_masks = torch.bernoulli(torch.rand(batch_dim, num_nodes))
+    condition_masks[:, 0] = 0  # Force at least one variable to be latent
+    condition_masks[:, 1] = 1  # Force at least one variable to be observed
     edge_masks = torch.ones(batch_dim, num_nodes, num_nodes)
 
     return score_estimator, inputs, condition_masks, edge_masks
