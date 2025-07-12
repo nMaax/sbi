@@ -139,6 +139,7 @@ def test_c2st_vector_field_on_linearGaussian(
         )
 
 
+# ? Could be moved/marked to GPU?
 # We always test num_dim and sample_with with defaults and mark the rests as slow.
 @pytest.mark.parametrize(
     "num_dim, prior_str, sample_with",
@@ -415,6 +416,119 @@ def test_vector_field_sde_ode_sampling_equivalence(vector_field_trained_model):
     inference = vector_field_trained_model["inference"]
     vector_field_type = vector_field_trained_model["vector_field_type"]
     sde_posterior = inference.build_posterior(sample_with="sde").set_default_x(x_o)
+    ode_posterior = inference.build_posterior(sample_with="ode").set_default_x(x_o)
+
+    sde_samples = sde_posterior.sample((num_samples,))
+    ode_samples = ode_posterior.sample((num_samples,))
+
+    check_c2st(
+        sde_samples,
+        ode_samples,
+        alg=f"sample_methods_equivalence-{vector_field_type}",
+        tol=0.07,
+    )
+
+
+# ? Maybe no need for this?
+@pytest.fixture(scope="module")
+def simformer_trained_model(vector_field_type, prior_type):
+    """Module-scoped fixture that trains a score estimator for NPSE tests."""
+    num_dim = 2
+    num_sim_nodes = 2  # theta, x
+    num_simulations = 10000
+
+    # likelihood_mean will be likelihood_shift+theta
+    likelihood_shift = -1.0 * ones(num_dim)
+    # The likelihood covariance is increased to make the iid inference easier,
+    # (otherwise the posterior gets too tight and the c2st is too high),
+    # but it doesn't really improve the results for both FMPE and NPSE.
+    likelihood_cov = 0.9 * eye(num_dim)
+
+    if prior_type == "gaussian" or (prior_type is None):
+        prior_mean = zeros(num_dim)
+        prior_cov = eye(num_dim)
+        prior = MultivariateNormal(loc=prior_mean, covariance_matrix=prior_cov)
+        prior_npse = prior if prior_type is None else None
+    elif prior_type == "uniform":
+        prior = BoxUniform(-2 * ones(num_dim), 2 * ones(num_dim))
+        prior_npse = prior
+
+    # This check that our method to handle "general" priors works.
+    # i.e. if NPSE does not get a proper passed by the user.
+    if vector_field_type == "fmpe":
+        inference = FMPE(prior_npse, show_progress_bars=True)
+    else:
+        inference = NPSE(
+            prior_npse, show_progress_bars=True, sde_type=vector_field_type
+        )
+
+    # Prepare data for Simformer
+    thetas = prior.sample((num_simulations,))
+    xs = linear_gaussian(thetas, likelihood_shift, likelihood_cov)
+    # inputs shape: (num_simulations, num_nodes, num_features)
+    inputs = torch.stack([thetas, xs], dim=1)
+
+    # Create condition masks
+    # ? Should rather do a Bernoulli here?
+    # ? (Should also be generalized to more than 2 nodes)
+    training_condition_masks = torch.tensor([False, True]).repeat(num_simulations, 1)
+    # Ensure at least one node is unconditioned to have a target for the loss
+    for i in range(num_simulations):
+        if training_condition_masks[i].all():
+            training_condition_masks[i, torch.randint(0, num_sim_nodes, (1,))] = False
+
+    # Create edge masks (fully connected)
+    edge_mask_single = torch.ones((num_sim_nodes, num_sim_nodes), dtype=torch.bool)
+    training_edge_masks = edge_mask_single.unsqueeze(0).expand(num_simulations, -1, -1)
+
+    inference = Simformer(prior=prior, show_progress_bars=True)
+
+    mvf_estimator = inference.append_simulations(
+        inputs=inputs,
+        condition_masks=training_condition_masks,
+        edge_masks=training_edge_masks,
+    ).train(max_num_epochs=100)
+
+    return {
+        "score_estimator": mvf_estimator,
+        "inference": inference,
+        "prior": prior,
+        "likelihood_shift": likelihood_shift,
+        "likelihood_cov": likelihood_cov,
+        "prior_mean": prior_mean
+        if prior_type == "gaussian" or prior_type is None
+        else None,
+        "prior_cov": prior_cov
+        if prior_type == "gaussian" or prior_type is None
+        else None,
+        "num_dim": num_dim,
+        "vector_field_type": vector_field_type,
+        "inference_condition_mask": torch.tensor([False, True]),
+        "inference_edge_mask": torch.ones(
+            (num_sim_nodes, num_sim_nodes), dtype=torch.bool
+        ),
+    }
+
+
+# ? Maybe no need for this?
+@pytest.mark.slow
+def test_simformer_sde_ode_sampling_equivalence(simformer_trained_model):
+    """
+    Test whether SDE and ODE sampling are equivalent
+    for FMPE and NPSE.
+    """
+    num_samples = 1000
+    x_o = zeros(1, simformer_trained_model["num_dim"])
+
+    # Build posterior for the specific task: infer theta (node 0) given x (node 1).
+
+    inference = simformer_trained_model["inference"]
+    vector_field_type = simformer_trained_model["vector_field_type"]
+    sde_posterior = inference.build_posterior(
+        condition_mask=simformer_trained_model["inference_condition_mask"],
+        edge_mask=simformer_trained_model["inference_edge_mask"],
+        sample_with="sde",
+    ).set_default_x(x_o)
     ode_posterior = inference.build_posterior(sample_with="ode").set_default_x(x_o)
 
     sde_samples = sde_posterior.sample((num_samples,))
