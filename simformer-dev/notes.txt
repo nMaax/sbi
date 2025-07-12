@@ -18,6 +18,7 @@ From merge_flow_builders_to_current_main:
 	- Fix warning and errors on wrapper pytests
 	- Check # TODO, # ! and # ? around codebase
   - For extra time:
+    - Add other ScoreEstimators: VP etc.
 	  - Add new parameter options to the pytests (e.g. AdaTime, or .sample_batch() tests)
     - Tests on DiTBlocks, FourerTime, ... (also code of others)
     - Likelihood Simformer
