@@ -878,9 +878,52 @@ class MaskedConditionalVectorFieldEstimatorWrapper(ConditionalVectorFieldEstimat
         self, input: Tensor, condition: Tensor, time: Tensor, **kwargs
     ) -> Tensor:
         # Assemble full input from give input and condition
-        # Take (B, T*F) and returns (B, T, F)
-        # TODO: make sure input and condition are in the right shape
+        # Take (..., T*F) and returns (..., T, F)
 
+        # self._original_T = T
+        # self._original_F = F
+        # self._num_latent = num_latent
+        # self._num_observed = num_observed
+
+        # Check shapes are correct
+        if input.shape[-1] != self._num_latent * self._original_F:
+            raise ValueError(
+                f"The last dimension of the input tensor must match the size of the "
+                f"latent variables ({self._num_latent}*{self._original_F}), but got "
+                f"{input.shape[-1]}. The wrapper expects a flattened tensor of shape "
+                f"(..., num_latent * num_features)."
+            )
+
+        if condition.shape[-1] != self._num_observed * self._original_F:
+            raise ValueError(
+                f"The last dimension of the condition tensor must match the size of "
+                f"the observed variables ({self._num_observed}*{self._original_F}), "
+                f"but got {condition.shape[-1]}. The wrapper expects a flattened "
+                f"tensor of shape (..., num_observed * num_features)."
+            )
+
+        total_elements = self._original_T * self._original_F
+        if input.shape[-1] + condition.shape[-1] != total_elements:
+            raise ValueError(
+                f"The combined size of the last dimension of input and condition "
+                f"({input.shape[-1] + condition.shape[-1]}) does not match the "
+                f"total expected size of the original unmasked input "
+                f"({total_elements}). Please ensure input and condition shapes are "
+                f"correct."
+            )
+
+        if input.dim() < 2:
+            raise ValueError(
+                f"Input tensor must have at least 2 dimensions (batch, features), "
+                f"but got {input.dim()} dimensions."
+            )
+        if condition.dim() < 2:
+            raise ValueError(
+                f"Condition tensor must have at least 2 dimensions (batch, features), "
+                f"but got {condition.dim()} dimensions."
+            )
+
+        # Assemble full input from given input and condition
         full_inputs_tensor = self._assemble_full_inputs(input, condition)
 
         B = full_inputs_tensor.shape[0]

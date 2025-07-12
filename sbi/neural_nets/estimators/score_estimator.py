@@ -760,7 +760,7 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
                 input,
                 input_noised,
             )
-        else:
+        elif condition_mask.dim() == 2:
             # Shape of condition_mask is already [B, T, F], No need for broadcasting
             input_noised = torch.where(
                 # Where condition_mask is True, use input (observed)
@@ -768,7 +768,10 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
                 input,
                 input_noised,
             )
-        # TODO: should add a raise error here too
+        else:
+            raise ValueError(
+                f"condition_mask has incorrect dimensions: {condition_mask.shape}"
+            )
 
         # If edge_mask is None, generate one of all ones [T, T] (fully connected graph)
         if edge_mask is None:
@@ -865,10 +868,8 @@ class MaskedConditionalScoreEstimator(MaskedConditionalVectorFieldEstimator):
         # Scale loss by weights
         loss = weights.clone().detach() * loss
 
-        # ! Should be the proper way to manage shapes, but it scale the final loss
         loss = loss.squeeze(dim=(-2, -1))
 
-        # print(loss.shape)
         return loss
 
     def approx_marginal_mean(self, times: Tensor) -> Tensor:

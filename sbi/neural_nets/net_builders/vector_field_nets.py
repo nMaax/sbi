@@ -145,7 +145,6 @@ def build_vector_field_estimator(
             raise ValueError(f"Unknown architecture: {net}")
 
     # Z-score setup
-    # TODO Should most definitely check if this is compatible with Simformer
     mean_0, std_0 = z_standardization(batch_x, z_score_x == "structured")
     embedding_net_y = (
         standardizing_net(batch_y, z_score_y == "structured")
