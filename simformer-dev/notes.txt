@@ -6,19 +6,19 @@ From merge_flow_builders_to_current_main:
 
 ## TODO
 	- Implement tests
-		├── bm_test.py <--- benchmarks (later, maybe NO)
-		├── lc2st_test.py (NO)
-		├── linearGaussian_vector_field_test.py <--- Inference Checks
-		├── posterior_nn_test.py <--- MaskedNeuralPosterior checks
-		├── sbc_test.py <--- (NO) Simulation Based Calibration
+		N── bm_test.py <--- benchmarks (later, maybe NO)
+		N── lc2st_test.py (NO)
+		D── linearGaussian_vector_field_test.py <--- Inference Checks
+		D── posterior_nn_test.py <--- MaskedNeuralPosterior checks
+		N── sbc_test.py <--- (NO) Simulation Based Calibration
 		X── score_estimator_test.py
 		X── vector_field_nets_test.py
 		X── vf_estimator_test.py
 
 	- Fix warning and errors on wrapper pytests
-	- Add new parameter options to the pytests (e.g. AdaTime, or .sample_batch() tests)
 	- Check # TODO, # ! and # ? around codebase
   - For extra time:
+	  - Add new parameter options to the pytests (e.g. AdaTime, or .sample_batch() tests)
     - Tests on DiTBlocks, FourerTime, ... (also code of others)
     - Likelihood Simformer
     - Joint distribution interface
