@@ -192,10 +192,6 @@ def test_c2st_simformer_on_linearGaussian(
     # ? Should rather do a Bernoulli here?
     # ? (Should also be generalized to more than 2 nodes)
     training_condition_masks = torch.tensor([False, True]).repeat(num_simulations, 1)
-    # Ensure at least one node is unconditioned to have a target for the loss
-    for i in range(num_simulations):
-        if training_condition_masks[i].all():
-            training_condition_masks[i, torch.randint(0, num_sim_nodes, (1,))] = False
 
     # Create edge masks (fully connected)
     edge_mask_single = torch.ones((num_sim_nodes, num_sim_nodes), dtype=torch.bool)
@@ -472,10 +468,6 @@ def simformer_trained_model(vector_field_type, prior_type):
     # ? Should rather do a Bernoulli here?
     # ? (Should also be generalized to more than 2 nodes)
     training_condition_masks = torch.tensor([False, True]).repeat(num_simulations, 1)
-    # Ensure at least one node is unconditioned to have a target for the loss
-    for i in range(num_simulations):
-        if training_condition_masks[i].all():
-            training_condition_masks[i, torch.randint(0, num_sim_nodes, (1,))] = False
 
     # Create edge masks (fully connected)
     edge_mask_single = torch.ones((num_sim_nodes, num_sim_nodes), dtype=torch.bool)

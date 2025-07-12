@@ -1019,7 +1019,7 @@ class MaskedConditionalVectorFieldEstimatorWrapper(ConditionalVectorFieldEstimat
     def _assemble_full_inputs(self, input, condition):
         # Get batch shape and feature dimension
         B = int(torch.prod(torch.tensor(input.shape[:-1])).item())
-        # B = math.prod(input.shape[:-1]) #! Alternative, must import math
+        # B = math.prod(input.shape[:-1]) # ! Alternative, must import math
         input_part_unflattened = input.reshape(B, self._num_latent, self._original_F)
         condition_part_unflattened = condition.reshape(
             -1, self._num_observed, self._original_F
