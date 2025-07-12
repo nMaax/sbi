@@ -113,6 +113,7 @@ edge_mask_single_sample = torch.ones((NUM_SIM_NODES, NUM_SIM_NODES), dtype=torch
 posterior = inference.build_posterior(
     condition_mask=condition_mask_single_sample,
     #edge_mask=edge_mask_single_sample,
+    sample_with="ode",
 )
 
 # %%

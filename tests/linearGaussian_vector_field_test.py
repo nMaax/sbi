@@ -139,6 +139,98 @@ def test_c2st_vector_field_on_linearGaussian(
         )
 
 
+# We always test num_dim and sample_with with defaults and mark the rests as slow.
+@pytest.mark.parametrize(
+    "num_dim, prior_str, sample_with",
+    [
+        (3, "uniform", ["sde", "ode"]),
+        (3, "gaussian", ["sde", "ode"]),
+    ],
+)
+def test_c2st_simformer_on_linearGaussian(
+    num_dim: int, prior_str: str, sample_with: List[str]
+):
+    """
+    Test whether Simformer infers well a simple example with available ground truth.
+    """
+    num_sim_nodes = 2  # theta, x
+    num_samples = 3000
+    num_simulations = 10000
+
+    x_o = zeros(1, num_dim)
+
+    # likelihood_mean will be likelihood_shift+theta
+    likelihood_shift = -1.0 * ones(num_dim)
+    likelihood_cov = 0.3 * eye(num_dim)
+
+    if prior_str == "gaussian":
+        prior_mean = zeros(num_dim)
+        prior_cov = eye(num_dim)
+        prior = MultivariateNormal(loc=prior_mean, covariance_matrix=prior_cov)
+        gt_posterior = true_posterior_linear_gaussian_mvn_prior(
+            x_o, likelihood_shift, likelihood_cov, prior_mean, prior_cov
+        )
+        target_samples = gt_posterior.sample((num_samples,))
+    else:
+        prior = utils.BoxUniform(-2.0 * ones(num_dim), 2.0 * ones(num_dim))
+        target_samples = samples_true_posterior_linear_gaussian_uniform_prior(
+            x_o,
+            likelihood_shift,
+            likelihood_cov,
+            prior=prior,
+            num_samples=num_samples,
+        )
+
+    # Prepare data for Simformer
+    thetas = prior.sample((num_simulations,))
+    xs = linear_gaussian(thetas, likelihood_shift, likelihood_cov)
+    # inputs shape: (num_simulations, num_nodes, num_features)
+    inputs = torch.stack([thetas, xs], dim=1)
+
+    # Create condition masks
+    # ? Should rather do a Bernoulli here?
+    # ? (Should also be generalized to more than 2 nodes)
+    training_condition_masks = torch.tensor([False, True]).repeat(num_simulations, 1)
+    # Ensure at least one node is unconditioned to have a target for the loss
+    for i in range(num_simulations):
+        if training_condition_masks[i].all():
+            training_condition_masks[i, torch.randint(0, num_sim_nodes, (1,))] = False
+
+    # Create edge masks (fully connected)
+    edge_mask_single = torch.ones((num_sim_nodes, num_sim_nodes), dtype=torch.bool)
+    training_edge_masks = edge_mask_single.unsqueeze(0).expand(num_simulations, -1, -1)
+
+    inference = Simformer(prior=prior, show_progress_bars=True)
+
+    mvf_estimator = inference.append_simulations(
+        inputs=inputs,
+        condition_masks=training_condition_masks,
+        edge_masks=training_edge_masks,
+    ).train(max_num_epochs=100)
+
+    # Build posterior for the specific task: infer theta (node 0) given x (node 1).
+    inference_condition_mask = torch.tensor([False, True])
+    inference_edge_mask = torch.ones((num_sim_nodes, num_sim_nodes), dtype=torch.bool)
+
+    for method in sample_with:
+        posterior = inference.build_posterior(
+            mvf_estimator=mvf_estimator,
+            condition_mask=inference_condition_mask,
+            edge_mask=inference_edge_mask,
+            sample_with=method,
+        )
+        # x_o has shape (1, num_dim), posterior expects (event_shape)
+        posterior.set_default_x(x_o.squeeze(0))
+        samples = posterior.sample((num_samples,))
+
+        check_c2st(
+            samples,
+            target_samples,
+            alg=f"simformer-{prior_str}-{num_dim}D-{method}",
+            tol=0.15,
+        )
+
+
 @pytest.mark.parametrize("vector_field_type", [NPSE, FMPE])
 def test_c2st_vector_field_on_linearGaussian_different_dims(vector_field_type):
     """Test NPE on linear Gaussian with different theta and x dimensionality."""
@@ -480,6 +572,8 @@ def test_simformer_map():
     inputs = torch.stack([thetas, xs], dim=1)
 
     # Create condition masks
+    # ? Should rather do a Bernoulli here?
+    # ? (Should also be generalized to more than 2 nodes)
     condition_masks = torch.tensor([False, True]).repeat(num_simulations, 1)
 
     # Create edge masks (fully connected)
