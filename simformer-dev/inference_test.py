@@ -83,7 +83,7 @@ print("sim_edge_masks.shape", sim_edge_masks.shape)  # Expected: [2, 2]
 inference.append_simulations(
     inputs=sim_inputs,
     condition_masks=sim_condition_masks,
-    edge_masks=sim_edge_masks,
+    #edge_masks=sim_edge_masks,
 )
 
 # %%

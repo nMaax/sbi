@@ -139,9 +139,11 @@ class Simformer(MaskedVectorFieldInference):
             Posterior $p(\theta|x)$  with `.sample()` and `.log_prob()` methods.
         """
 
+        batch_dims = condition_mask.shape[:-1]
         num_nodes = condition_mask.shape[-1]
         if edge_mask is None:
-            edge_mask = torch.ones((num_nodes, num_nodes))
+            edge_mask = torch.ones((num_nodes, num_nodes)).bool()
+            edge_mask = edge_mask.repeat(*batch_dims, 1, 1)
 
         return self._build_posterior(
             condition_mask,

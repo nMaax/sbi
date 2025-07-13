@@ -826,9 +826,11 @@ class MaskedVectorFieldInference(MaskedNeuralInference, ABC):
         if data_device is None:
             data_device = self._device
 
+        batch_dims = condition_masks.shape[:-1]
         num_nodes = condition_masks.shape[-1]
         if edge_masks is None:
-            edge_masks = torch.ones((num_nodes, num_nodes))
+            edge_masks = torch.ones((num_nodes, num_nodes)).bool()
+            edge_masks = edge_masks.repeat(*batch_dims, 1, 1)
 
         inputs, condition_masks, edge_masks = validate_inputs_and_masks(
             inputs,

@@ -154,7 +154,7 @@ def test_c2st_simformer_on_linearGaussian(
     """
     Test whether Simformer infers well a simple example with available ground truth.
     """
-    num_sim_nodes = 2  # theta, x
+    # num_sim_nodes = 2  # theta, x
     num_samples = 3000
     num_simulations = 10000
 
@@ -188,36 +188,28 @@ def test_c2st_simformer_on_linearGaussian(
     # inputs shape: (num_simulations, num_nodes, num_features)
     inputs = torch.stack([thetas, xs], dim=1)
 
-    # Create condition masks
+    # Create condition masks (theta latent, x observed)
     # ? Should rather do a Bernoulli here?
     # ? (Should also be generalized to more than 2 nodes)
     training_condition_masks = torch.tensor([False, True]).repeat(num_simulations, 1)
-
-    # Create edge masks (fully connected)
-    edge_mask_single = torch.ones((num_sim_nodes, num_sim_nodes), dtype=torch.bool)
-    training_edge_masks = edge_mask_single.unsqueeze(0).expand(num_simulations, -1, -1)
 
     inference = Simformer(prior=prior, show_progress_bars=True)
 
     mvf_estimator = inference.append_simulations(
         inputs=inputs,
         condition_masks=training_condition_masks,
-        edge_masks=training_edge_masks,
     ).train(max_num_epochs=100)
 
     # Build posterior for the specific task: infer theta (node 0) given x (node 1).
     inference_condition_mask = torch.tensor([False, True])
-    inference_edge_mask = torch.ones((num_sim_nodes, num_sim_nodes), dtype=torch.bool)
 
     for method in sample_with:
         posterior = inference.build_posterior(
             mvf_estimator=mvf_estimator,
             condition_mask=inference_condition_mask,
-            edge_mask=inference_edge_mask,
             sample_with=method,
-        )
-        # x_o has shape (1, num_dim), posterior expects (event_shape)
-        posterior.set_default_x(x_o.squeeze(0))
+        ).set_default_x(x_o.squeeze(0))
+
         samples = posterior.sample((num_samples,))
 
         check_c2st(
@@ -425,12 +417,12 @@ def test_vector_field_sde_ode_sampling_equivalence(vector_field_trained_model):
     )
 
 
-# ? Maybe no need for this?
+# ? Maybe no need for this? Seems kinda slow...
 @pytest.fixture(scope="module")
 def simformer_trained_model(vector_field_type, prior_type):
     """Module-scoped fixture that trains a score estimator for NPSE tests."""
-    num_dim = 2
-    num_sim_nodes = 2  # theta, x
+    num_dim = 3
+    # num_sim_nodes = 2  # theta, x
     num_simulations = 10000
 
     # likelihood_mean will be likelihood_shift+theta
@@ -464,21 +456,16 @@ def simformer_trained_model(vector_field_type, prior_type):
     # inputs shape: (num_simulations, num_nodes, num_features)
     inputs = torch.stack([thetas, xs], dim=1)
 
-    # Create condition masks
+    # Create condition masks (theta latent, x observed)
     # ? Should rather do a Bernoulli here?
     # ? (Should also be generalized to more than 2 nodes)
     training_condition_masks = torch.tensor([False, True]).repeat(num_simulations, 1)
-
-    # Create edge masks (fully connected)
-    edge_mask_single = torch.ones((num_sim_nodes, num_sim_nodes), dtype=torch.bool)
-    training_edge_masks = edge_mask_single.unsqueeze(0).expand(num_simulations, -1, -1)
 
     inference = Simformer(prior=prior, show_progress_bars=True)
 
     mvf_estimator = inference.append_simulations(
         inputs=inputs,
         condition_masks=training_condition_masks,
-        edge_masks=training_edge_masks,
     ).train(max_num_epochs=100)
 
     return {
@@ -496,9 +483,6 @@ def simformer_trained_model(vector_field_type, prior_type):
         "num_dim": num_dim,
         "vector_field_type": vector_field_type,
         "inference_condition_mask": torch.tensor([False, True]),
-        "inference_edge_mask": torch.ones(
-            (num_sim_nodes, num_sim_nodes), dtype=torch.bool
-        ),
     }
 
 
@@ -518,7 +502,6 @@ def test_simformer_sde_ode_sampling_equivalence(simformer_trained_model):
     vector_field_type = simformer_trained_model["vector_field_type"]
     sde_posterior = inference.build_posterior(
         condition_mask=simformer_trained_model["inference_condition_mask"],
-        edge_mask=simformer_trained_model["inference_edge_mask"],
         sample_with="sde",
     ).set_default_x(x_o)
     ode_posterior = inference.build_posterior(sample_with="ode").set_default_x(x_o)
@@ -646,7 +629,7 @@ def test_vector_field_map(vector_field_type):
 @pytest.mark.slow
 def test_simformer_map():
     num_node_features = 2
-    num_sim_nodes = 2  # theta, x
+    # num_sim_nodes = 2  # theta, x
     num_simulations = 3000
 
     # likelihood_mean will be likelihood_shift+theta
@@ -677,30 +660,23 @@ def test_simformer_map():
     xs = simulator(thetas)
     inputs = torch.stack([thetas, xs], dim=1)
 
-    # Create condition masks
+    # Create condition masks (theta latent, x observed)
     # ? Should rather do a Bernoulli here?
     # ? (Should also be generalized to more than 2 nodes)
     condition_masks = torch.tensor([False, True]).repeat(num_simulations, 1)
-
-    # Create edge masks (fully connected)
-    edge_mask_single = torch.ones((num_sim_nodes, num_sim_nodes), dtype=torch.bool)
-    edge_masks = edge_mask_single.unsqueeze(0).expand(num_simulations, -1, -1)
 
     inference = Simformer(prior=prior, show_progress_bars=True)
 
     inference.append_simulations(
         inputs=inputs,
         condition_masks=condition_masks,
-        edge_masks=edge_masks,
     ).train(max_num_epochs=100)
 
     # Build posterior for the specific task: infer theta (node 0) given x (node 1).
     inference_condition_mask = torch.tensor([False, True])
-    inference_edge_mask = torch.ones((num_sim_nodes, num_sim_nodes), dtype=torch.bool)
 
     posterior = inference.build_posterior(
         condition_mask=inference_condition_mask,
-        edge_mask=inference_edge_mask,
     )
 
     posterior.set_default_x(x_o_features)
