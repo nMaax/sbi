@@ -15,6 +15,8 @@ From merge_flow_builders_to_current_main:
 		X── vector_field_nets_test.py
 		X── vf_estimator_test.py
 
+  - Run tests on MAP, iid, posterior_nn
+  - Re-introduce skip on iid for Simformer
 	- Fix warning and errors on wrapper pytests
 	- Check # TODO, # ! and # ? around codebase
   - For extra time:
