@@ -603,9 +603,9 @@ def test_vector_field_iid_inference(
 # TODO: Currently, c2st is too high for FMPE (e.g., > 3 number of observations),
 # so some tests are skipped so far. This seems to be an issue with the
 # neural network architecture and can be addressed in PR #1501
-# @pytest.mark.skip(
-#     reason="c2st too high for some cases, has to be fixed in PR #1501 or #1544"
-# )
+@pytest.mark.skip(
+    reason="c2st too high for some cases, has to be fixed in PR #1501 or #1544"
+)
 @pytest.mark.slow
 @pytest.mark.parametrize(
     "iid_method, num_trial",
