@@ -14,11 +14,11 @@ from sbi.inference import (
     FMPE,
     NPSE,
     MCMCPosterior,
+    Simformer,
     VectorFieldPosterior,
     simulate_for_sbi,
     vector_field_estimator_based_potential,
 )
-from sbi.inference.trainers.vfpe.simformer import Simformer
 from sbi.neural_nets.factory import posterior_flow_nn
 from sbi.simulators import linear_gaussian
 from sbi.simulators.linear_gaussian import (

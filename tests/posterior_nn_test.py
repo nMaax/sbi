@@ -18,8 +18,8 @@ from sbi.inference import (
     NRE_B,
     NRE_C,
     DirectPosterior,
+    Simformer,
 )
-from sbi.inference.trainers.vfpe.simformer import Simformer
 from sbi.simulators.linear_gaussian import (
     diagonal_linear_gaussian,
     linear_gaussian,
