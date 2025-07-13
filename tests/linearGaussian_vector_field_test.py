@@ -417,10 +417,22 @@ def test_vector_field_sde_ode_sampling_equivalence(vector_field_trained_model):
     )
 
 
+@pytest.fixture(scope="module", params=["ve"])
+def simformer_vector_field_type(request):
+    """Module-scoped fixture for vector field type. (Simformer fixture)"""
+    return request.param
+
+
+@pytest.fixture(scope="module", params=["gaussian", "uniform", None])
+def simformer_prior_type(request):
+    """Module-scoped fixture for prior type. (Simformer fixture)"""
+    return request.param
+
+
 # ? Maybe no need for this? Seems kinda slow...
 @pytest.fixture(scope="module")
-def simformer_trained_model(vector_field_type, prior_type):
-    """Module-scoped fixture that trains a score estimator for NPSE tests."""
+def simformer_trained_model(simformer_vector_field_type, simformer_prior_type):
+    """Module-scoped fixture that trains a score estimator for Simformer tests."""
     num_dim = 3
     # num_sim_nodes = 2  # theta, x
     num_simulations = 10000
@@ -432,26 +444,20 @@ def simformer_trained_model(vector_field_type, prior_type):
     # but it doesn't really improve the results for both FMPE and NPSE.
     likelihood_cov = 0.9 * eye(num_dim)
 
-    if prior_type == "gaussian" or (prior_type is None):
+    if simformer_prior_type == "gaussian":
         prior_mean = zeros(num_dim)
         prior_cov = eye(num_dim)
         prior = MultivariateNormal(loc=prior_mean, covariance_matrix=prior_cov)
-        prior_npse = prior if prior_type is None else None
-    elif prior_type == "uniform":
+        thetas = prior.sample((num_simulations,))
+    elif simformer_prior_type == "uniform":
         prior = BoxUniform(-2 * ones(num_dim), 2 * ones(num_dim))
-        prior_npse = prior
-
-    # This check that our method to handle "general" priors works.
-    # i.e. if NPSE does not get a proper passed by the user.
-    if vector_field_type == "fmpe":
-        inference = FMPE(prior_npse, show_progress_bars=True)
+        thetas = prior.sample((num_simulations,))
     else:
-        inference = NPSE(
-            prior_npse, show_progress_bars=True, sde_type=vector_field_type
-        )
+        prior = None
+        thetas = MultivariateNormal(
+            loc=zeros(num_dim), covariance_matrix=eye(num_dim)
+        ).sample((num_simulations,))
 
-    # Prepare data for Simformer
-    thetas = prior.sample((num_simulations,))
     xs = linear_gaussian(thetas, likelihood_shift, likelihood_cov)
     # inputs shape: (num_simulations, num_nodes, num_features)
     inputs = torch.stack([thetas, xs], dim=1)
@@ -461,7 +467,9 @@ def simformer_trained_model(vector_field_type, prior_type):
     # ? (Should also be generalized to more than 2 nodes)
     training_condition_masks = torch.tensor([False, True]).repeat(num_simulations, 1)
 
-    inference = Simformer(prior=prior, show_progress_bars=True)
+    inference = Simformer(
+        prior=prior, sde_type=simformer_vector_field_type, show_progress_bars=True
+    )
 
     mvf_estimator = inference.append_simulations(
         inputs=inputs,
@@ -481,7 +489,7 @@ def simformer_trained_model(vector_field_type, prior_type):
         if prior_type == "gaussian" or prior_type is None
         else None,
         "num_dim": num_dim,
-        "vector_field_type": vector_field_type,
+        "simformer_vector_field_type": simformer_vector_field_type,
         "inference_condition_mask": torch.tensor([False, True]),
     }
 
@@ -491,7 +499,7 @@ def simformer_trained_model(vector_field_type, prior_type):
 def test_simformer_sde_ode_sampling_equivalence(simformer_trained_model):
     """
     Test whether SDE and ODE sampling are equivalent
-    for FMPE and NPSE.
+    for Simformer.
     """
     num_samples = 1000
     x_o = zeros(1, simformer_trained_model["num_dim"])
@@ -499,12 +507,15 @@ def test_simformer_sde_ode_sampling_equivalence(simformer_trained_model):
     # Build posterior for the specific task: infer theta (node 0) given x (node 1).
 
     inference = simformer_trained_model["inference"]
-    vector_field_type = simformer_trained_model["vector_field_type"]
+    vector_field_type = simformer_trained_model["simformer_vector_field_type"]
+    condition_mask = simformer_trained_model["inference_condition_mask"]
     sde_posterior = inference.build_posterior(
-        condition_mask=simformer_trained_model["inference_condition_mask"],
+        condition_mask=condition_mask,
         sample_with="sde",
     ).set_default_x(x_o)
-    ode_posterior = inference.build_posterior(sample_with="ode").set_default_x(x_o)
+    ode_posterior = inference.build_posterior(
+        condition_mask=condition_mask, sample_with="ode"
+    ).set_default_x(x_o)
 
     sde_samples = sde_posterior.sample((num_samples,))
     ode_samples = ode_posterior.sample((num_samples,))
@@ -560,6 +571,80 @@ def test_vector_field_iid_inference(
     x_o = zeros(num_trial, num_dim)
     posterior = inference.build_posterior(score_estimator, sample_with="sde")
     posterior.set_default_x(x_o)
+    samples = posterior.sample((num_samples,), iid_method=iid_method)
+
+    if prior_type == "gaussian" or (prior_type is None):
+        gt_posterior = true_posterior_linear_gaussian_mvn_prior(
+            x_o, likelihood_shift, likelihood_cov, prior_mean, prior_cov
+        )
+        target_samples = gt_posterior.sample((num_samples,))
+    elif prior_type == "uniform":
+        target_samples = samples_true_posterior_linear_gaussian_uniform_prior(
+            x_o,
+            likelihood_shift,
+            likelihood_cov,
+            prior,  # type: ignore
+        )
+
+    # Compute the c2st and assert it is near chance level of 0.5.
+    # Some degradation is expected, also because posterior get tighter which
+    # usually makes the c2st worse.
+    check_c2st(
+        samples,
+        target_samples,
+        alg=(
+            f"{vector_field_type}-{prior_type}-"
+            f"{num_dim}-{iid_method}-{num_trial}iid-trials"
+        ),
+        tol=0.05 * min(num_trial, 8),
+    )
+
+
+# TODO: Currently, c2st is too high for FMPE (e.g., > 3 number of observations),
+# so some tests are skipped so far. This seems to be an issue with the
+# neural network architecture and can be addressed in PR #1501
+# @pytest.mark.skip(
+#     reason="c2st too high for some cases, has to be fixed in PR #1501 or #1544"
+# )
+@pytest.mark.slow
+@pytest.mark.parametrize(
+    "iid_method, num_trial",
+    [
+        pytest.param("fnpe", 3, id="fnpe-2trials"),
+        pytest.param("gauss", 3, id="gauss-3trials"),
+        pytest.param("auto_gauss", 8, id="auto_gauss-8trials"),
+        pytest.param("auto_gauss", 16, id="auto_gauss-16trials"),
+        pytest.param("jac_gauss", 8, id="jac_gauss-8trials"),
+    ],
+)
+def test_simformer_iid_inference(
+    simformer_trained_model,
+    iid_method,
+    num_trial,
+):
+    """
+    Test whether Simformer infers well a simple example with available ground truth.
+    """
+    num_samples = 1000
+
+    # Extract data from fixture
+    score_estimator = simformer_trained_model["score_estimator"]
+    inference = simformer_trained_model["inference"]
+    prior_type = simformer_trained_model["simformer_prior_type"]
+    prior = simformer_trained_model["prior"]
+    likelihood_shift = simformer_trained_model["likelihood_shift"]
+    likelihood_cov = simformer_trained_model["likelihood_cov"]
+    prior_mean = simformer_trained_model["prior_mean"]
+    prior_cov = simformer_trained_model["prior_cov"]
+    num_dim = simformer_trained_model["num_dim"]
+    vector_field_type = simformer_trained_model["simformer_vector_field_type"]
+
+    condition_mask = simformer_trained_model["inference_condition_mask"]
+
+    x_o = zeros(num_trial, num_dim)
+    posterior = inference.build_posterior(
+        score_estimator, condition_mask=condition_mask, sample_with="sde"
+    ).set_default_x(x_o)
     samples = posterior.sample((num_samples,), iid_method=iid_method)
 
     if prior_type == "gaussian" or (prior_type is None):
