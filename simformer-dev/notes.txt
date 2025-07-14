@@ -8,15 +8,13 @@ From merge_flow_builders_to_current_main:
 	- Implement tests
 		N── bm_test.py <--- benchmarks (later, maybe NO)
 		N── lc2st_test.py (NO)
-		D── linearGaussian_vector_field_test.py <--- Inference Checks
-		D── posterior_nn_test.py <--- MaskedNeuralPosterior checks
+		X── linearGaussian_vector_field_test.py <--- Inference Checks
+		X── posterior_nn_test.py <--- MaskedNeuralPosterior checks
 		N── sbc_test.py <--- (NO) Simulation Based Calibration
 		X── score_estimator_test.py
 		X── vector_field_nets_test.py
 		X── vf_estimator_test.py
 
-  - Run tests on MAP, iid, posterior_nn
-  - Re-introduce skip on iid for Simformer
 	- Fix warning and errors on wrapper pytests
 	- Check # TODO, # ! and # ? around codebase
   - For extra time:

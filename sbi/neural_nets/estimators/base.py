@@ -1019,7 +1019,21 @@ class MaskedConditionalVectorFieldEstimatorWrapper(ConditionalVectorFieldEstimat
     def _assemble_full_inputs(self, input, condition):
         # Get batch shape and feature dimension
         B = int(torch.prod(torch.tensor(input.shape[:-1])).item())
-        # B = math.prod(input.shape[:-1]) # ! Alternative, must import math
+
+        assert (B // condition.shape[0]) * condition.shape[0] == B, (
+            f"{input.shape=}, {condition.shape=}"
+        )
+        "Incompatible shapes for input and condition. The number of samples "
+        "per condition is ambiguous. "
+        "You should sample a number of samples multiple "
+        f"of the number of elements in the condition: got {input.shape=}"
+        f"which is not a multiple of {condition.shape=}. "
+        "This may be due to `x_o` having a "
+        "different batch size than the input, or because the total number of "
+        "samples is not divisible by the number of conditions. For example, if "
+        "`x_o` has 3 trials and `num_samples=1000`, this will fail as 1000 is "
+        "not divisible by 3. Instead, use a multiple of 3, e.g., 999 or 3000."
+
         input_part_unflattened = input.reshape(B, self._num_latent, self._original_F)
         condition_part_unflattened = condition.reshape(
             -1, self._num_observed, self._original_F

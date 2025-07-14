@@ -603,6 +603,8 @@ def test_vector_field_iid_inference(
 # TODO: Currently, c2st is too high for FMPE (e.g., > 3 number of observations),
 # so some tests are skipped so far. This seems to be an issue with the
 # neural network architecture and can be addressed in PR #1501
+# TODO: there are some shapes errors in MaskedWrapper, need to
+# Seems like an incompatible num_samples and num_trial (x_o) are passed
 @pytest.mark.skip(
     reason="c2st too high for some cases, has to be fixed in PR #1501 or #1544"
 )
@@ -621,16 +623,16 @@ def test_simformer_iid_inference(
     simformer_trained_model,
     iid_method,
     num_trial,
+    simformer_prior_type,
 ):
     """
     Test whether Simformer infers well a simple example with available ground truth.
     """
-    num_samples = 1000
+    num_samples = num_trial * 1000
 
     # Extract data from fixture
     score_estimator = simformer_trained_model["score_estimator"]
     inference = simformer_trained_model["inference"]
-    prior_type = simformer_trained_model["simformer_prior_type"]
     prior = simformer_trained_model["prior"]
     likelihood_shift = simformer_trained_model["likelihood_shift"]
     likelihood_cov = simformer_trained_model["likelihood_cov"]
@@ -643,16 +645,16 @@ def test_simformer_iid_inference(
 
     x_o = zeros(num_trial, num_dim)
     posterior = inference.build_posterior(
-        score_estimator, condition_mask=condition_mask, sample_with="sde"
+        mvf_estimator=score_estimator, condition_mask=condition_mask, sample_with="sde"
     ).set_default_x(x_o)
     samples = posterior.sample((num_samples,), iid_method=iid_method)
 
-    if prior_type == "gaussian" or (prior_type is None):
+    if simformer_prior_type == "gaussian" or (simformer_prior_type is None):
         gt_posterior = true_posterior_linear_gaussian_mvn_prior(
             x_o, likelihood_shift, likelihood_cov, prior_mean, prior_cov
         )
         target_samples = gt_posterior.sample((num_samples,))
-    elif prior_type == "uniform":
+    elif simformer_prior_type == "uniform":
         target_samples = samples_true_posterior_linear_gaussian_uniform_prior(
             x_o,
             likelihood_shift,
@@ -667,7 +669,7 @@ def test_simformer_iid_inference(
         samples,
         target_samples,
         alg=(
-            f"{vector_field_type}-{prior_type}-"
+            f"{vector_field_type}-{simformer_prior_type}-"
             f"{num_dim}-{iid_method}-{num_trial}iid-trials"
         ),
         tol=0.05 * min(num_trial, 8),
