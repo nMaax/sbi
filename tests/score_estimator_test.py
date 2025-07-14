@@ -279,9 +279,7 @@ def _build_masked_score_estimator_and_tensors(
         **kwargs,
     )
 
-    # ? Why using slices? This is done in the original build_score_estimator_and_tensors
     inputs = building_inputs[:batch_dim]
-    # ? Is ok to use a bernoulli in tests?
     condition_masks = torch.bernoulli(torch.rand(batch_dim, num_nodes))
     condition_masks[:, 0] = 0  # Force at least one variable to be latent
     condition_masks[:, 1] = 1  # Force at least one variable to be observed
@@ -300,7 +298,6 @@ def _build_masked_score_estimator_and_tensors(
 # *** ======== Unmasked Estimator ======== *** #
 
 
-# ? Is this appropriate?
 @pytest.mark.parametrize("sde_type", ["ve"])
 @pytest.mark.parametrize("input_sample_dim", (1, 2))
 @pytest.mark.parametrize("input_event_shape", ((3, 5), (3, 1)))
@@ -331,7 +328,6 @@ def test_unmasked_wrapper_score_estimator_loss_shapes(
         score_estimator.loss(inputs[0], condition)
 
 
-# ? Is this appropriate?
 @pytest.mark.gpu
 @pytest.mark.parametrize("sde_type", ["ve"])
 @pytest.mark.parametrize("device", ["cpu", "cuda"])

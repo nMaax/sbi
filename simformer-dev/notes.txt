@@ -15,8 +15,10 @@ From merge_flow_builders_to_current_main:
 		X── vector_field_nets_test.py
 		X── vf_estimator_test.py
 
+  - In tests of linearGaussian_vector_field_test we could move some of them to GPU
+  - In tests of linearGaussian_vector_field_test I use fixed condition masks, should it be better to use a Bernoulli?
+    Also in score_estimator_test, there instead I use a bernoulli, is that ok?
 	- Fix warning and errors on wrapper pytests
-	- Check # TODO, # ! and # ? around codebase
   - For extra time:
     - Add other ScoreEstimators: VP etc.
 	  - Add new parameter options to the pytests (e.g. AdaTime, or .sample_batch() tests)

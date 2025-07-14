@@ -139,7 +139,6 @@ def test_c2st_vector_field_on_linearGaussian(
         )
 
 
-# ? Could be moved/marked to GPU?
 # We always test num_dim and sample_with with defaults and mark the rests as slow.
 @pytest.mark.parametrize(
     "num_dim, prior_str, sample_with",
@@ -189,8 +188,6 @@ def test_c2st_simformer_on_linearGaussian(
     inputs = torch.stack([thetas, xs], dim=1)
 
     # Create condition masks (theta latent, x observed)
-    # ? Should rather do a Bernoulli here?
-    # ? (Should also be generalized to more than 2 nodes)
     training_condition_masks = torch.tensor([False, True]).repeat(num_simulations, 1)
 
     inference = Simformer(prior=prior, show_progress_bars=True)
@@ -429,7 +426,6 @@ def simformer_prior_type(request):
     return request.param
 
 
-# ? Maybe no need for this? Seems kinda slow...
 @pytest.fixture(scope="module")
 def simformer_trained_model(simformer_vector_field_type, simformer_prior_type):
     """Module-scoped fixture that trains a score estimator for Simformer tests."""
@@ -463,8 +459,6 @@ def simformer_trained_model(simformer_vector_field_type, simformer_prior_type):
     inputs = torch.stack([thetas, xs], dim=1)
 
     # Create condition masks (theta latent, x observed)
-    # ? Should rather do a Bernoulli here?
-    # ? (Should also be generalized to more than 2 nodes)
     training_condition_masks = torch.tensor([False, True]).repeat(num_simulations, 1)
 
     inference = Simformer(
@@ -494,7 +488,6 @@ def simformer_trained_model(simformer_vector_field_type, simformer_prior_type):
     }
 
 
-# ? Maybe no need for this?
 @pytest.mark.slow
 def test_simformer_sde_ode_sampling_equivalence(simformer_trained_model):
     """
@@ -712,7 +705,6 @@ def test_vector_field_map(vector_field_type):
     assert ((map_ - gt_posterior.mean) ** 2).sum() < 0.5, "MAP is not close to GT."
 
 
-# ? Could be moved/marked to GPU?
 @pytest.mark.slow
 def test_simformer_map():
     num_node_features = 2
@@ -748,8 +740,6 @@ def test_simformer_map():
     inputs = torch.stack([thetas, xs], dim=1)
 
     # Create condition masks (theta latent, x observed)
-    # ? Should rather do a Bernoulli here?
-    # ? (Should also be generalized to more than 2 nodes)
     condition_masks = torch.tensor([False, True]).repeat(num_simulations, 1)
 
     inference = Simformer(prior=prior, show_progress_bars=True)
