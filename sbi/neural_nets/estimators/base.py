@@ -1,6 +1,7 @@
 # This file is part of sbi, a toolkit for simulation-based inference. sbi is licensed
 # under the Apache License Version 2.0, see <https://www.apache.org/licenses/>
 
+import warnings
 from abc import ABC, abstractmethod
 from typing import Optional, Tuple
 
@@ -983,6 +984,7 @@ class MaskedConditionalVectorFieldEstimatorWrapper(ConditionalVectorFieldEstimat
     def score(self, input: Tensor, condition: Tensor, t: Tensor) -> Tensor:
         # Assemble full input from give input and condition
         # input: (B, num_latent * F), condition: (B, num_observed * F)
+        input, condition = self._truncate_to_batch_multiple(input, condition)
         full_inputs_tensor = self._assemble_full_inputs(input, condition)
 
         # Call the original estimator's loss
@@ -1019,25 +1021,12 @@ class MaskedConditionalVectorFieldEstimatorWrapper(ConditionalVectorFieldEstimat
     def _assemble_full_inputs(self, input, condition):
         # Get batch shape and feature dimension
         B = int(torch.prod(torch.tensor(input.shape[:-1])).item())
-
-        assert (B // condition.shape[0]) * condition.shape[0] == B, (
-            f"{input.shape=}, {condition.shape=}"
-        )
-        "Incompatible shapes for input and condition. The number of samples "
-        "per condition is ambiguous. "
-        "You should sample a number of samples multiple "
-        f"of the number of elements in the condition: got {input.shape=}"
-        f"which is not a multiple of {condition.shape=}. "
-        "This may be due to `x_o` having a "
-        "different batch size than the input, or because the total number of "
-        "samples is not divisible by the number of conditions. For example, if "
-        "`x_o` has 3 trials and `num_samples=1000`, this will fail as 1000 is "
-        "not divisible by 3. Instead, use a multiple of 3, e.g., 999 or 3000."
+        C = int(torch.prod(torch.tensor(condition.shape[:-1])).item())
 
         input_part_unflattened = input.reshape(B, self._num_latent, self._original_F)
         condition_part_unflattened = condition.reshape(
             -1, self._num_observed, self._original_F
-        ).repeat(B // condition.shape[0], 1, 1)
+        ).repeat(B // C, 1, 1)
 
         full_inputs = torch.zeros(
             B,
@@ -1056,6 +1045,40 @@ class MaskedConditionalVectorFieldEstimatorWrapper(ConditionalVectorFieldEstimat
         latent_part = full_outputs[:, self._latent_idx, :]  # (B, num_latent, F)
 
         return latent_part.reshape_as(original_latent_tensor)
+
+    def _truncate_to_batch_multiple(
+        self, input: Tensor, condition: Tensor
+    ) -> tuple[Tensor, Tensor]:
+        # Get number of full batch items (flatten all dims except last)
+        input_batch = int(torch.prod(torch.tensor(input.shape[:-1])).item())
+        cond_batch = int(torch.prod(torch.tensor(condition.shape[:-1])).item())
+
+        if input_batch % cond_batch != 0:
+            truncated_input_batch = (input_batch // cond_batch) * cond_batch
+            warnings.warn(
+                f"Incompatible shapes: input batch size {input_batch} is not divisible "
+                f"by condition batch size {cond_batch}. "
+                f"Truncating to {truncated_input_batch} to ensure consistency."
+                f"You should sample a number of samples multiple "
+                f"of the number of elements in the condition: got {input.shape=}"
+                f"which is not a multiple of {condition.shape=}. "
+                f"This may be due to `x_o` having a "
+                f"different batch size than the input, or because the total number of "
+                f"samples is not divisible by the number of conditions. "
+                f"For example, if `x_o` has 3 trials and `num_samples=1000`, "
+                f"this will fail as 1000 is not divisible by 3. "
+                f"Instead, use a multiple of 3, e.g., 999 or 3000.",
+                stacklevel=2,
+            )
+            # Flatten batch dims then truncate
+            input = input.reshape(input_batch, -1)[:truncated_input_batch]
+            input = input.reshape(
+                *input.shape[:-1], self._num_latent * self._original_F
+            )
+
+            return input, condition
+        else:
+            return input, condition
 
 
 class UnconditionalEstimator(nn.Module, ABC):
